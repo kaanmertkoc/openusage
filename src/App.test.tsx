@@ -43,11 +43,6 @@ const dndState = vi.hoisted(() => ({
   latestOnDragEnd: null as null | ((event: any) => void),
 }))
 
-const updaterState = vi.hoisted(() => ({
-  checkMock: vi.fn(async () => null),
-  relaunchMock: vi.fn(async () => undefined),
-}))
-
 const eventState = vi.hoisted(() => {
   const handlers = new Map<string, (event: any) => void>()
   return {
@@ -183,14 +178,6 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: () => Promise.resolve("0.0.0-test"),
 }))
 
-vi.mock("@tauri-apps/plugin-updater", () => ({
-  check: updaterState.checkMock,
-}))
-
-vi.mock("@tauri-apps/plugin-process", () => ({
-  relaunch: updaterState.relaunchMock,
-}))
-
 vi.mock("@tauri-apps/plugin-autostart", () => ({
   enable: state.autostartEnableMock,
   disable: state.autostartDisableMock,
@@ -292,9 +279,6 @@ describe("App", () => {
     menuState.menuCloseMock.mockReset()
     eventState.handlers.clear()
     eventState.listenMock.mockReset()
-    updaterState.checkMock.mockReset()
-    updaterState.relaunchMock.mockReset()
-    updaterState.checkMock.mockResolvedValue(null)
     state.savePluginSettingsMock.mockResolvedValue(undefined)
     state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
     state.loadThemeModeMock.mockResolvedValue("system")
@@ -659,12 +643,12 @@ describe("App", () => {
 
     // Open about via version button in footer
     await userEvent.click(await screen.findByRole("button", { name: /OpenUsage/i }))
-    await screen.findByText("Built by")
+    await screen.findByText("Personal local build.")
 
     // Close about via ESC key
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
     await waitFor(() => {
-      expect(screen.queryByText("Built by")).not.toBeInTheDocument()
+      expect(screen.queryByText("Personal local build.")).not.toBeInTheDocument()
     })
   })
 

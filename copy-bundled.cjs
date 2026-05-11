@@ -1,5 +1,5 @@
 const { cpSync, readdirSync, rmSync } = require("fs")
-const { join } = require("path")
+const { basename, join } = require("path")
 
 const root = __dirname
 const exclude = new Set(["mock"])
@@ -13,7 +13,10 @@ const plugins = readdirSync(srcDir, { withFileTypes: true })
   .map((d) => d.name)
 
 for (const id of plugins) {
-  cpSync(join(srcDir, id), join(dstDir, id), { recursive: true })
+  cpSync(join(srcDir, id), join(dstDir, id), {
+    recursive: true,
+    filter: (path) => !basename(path).endsWith(".test.js"),
+  })
 }
 
 console.log(`Bundled ${plugins.length} plugins: ${plugins.join(", ")}`)

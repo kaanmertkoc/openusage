@@ -13,8 +13,6 @@
     "core:window:allow-scale-factor",
     "opener:default",
     "store:default",
-    "updater:default",
-    "process:allow-restart",
     "global-shortcut:default",
     "autostart:default",
     "core:menu:default"

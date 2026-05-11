@@ -1,6 +1,5 @@
 import { useCallback } from "react"
-import { CircleHelp, Settings } from "lucide-react"
-import { openUrl } from "@tauri-apps/plugin-opener"
+import { Settings } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
 import {
@@ -248,20 +247,7 @@ export function SideNav({
         </SortableContext>
       </DndContext>
 
-      {/* Spacer */}
       <div className="flex-1" />
-
-      {/* Help */}
-      <NavButton
-        isActive={false}
-        onClick={() => {
-          openUrl("https://github.com/robinebers/openusage/issues").catch(console.error)
-          invoke("hide_panel").catch(console.error)
-        }}
-        aria-label="Help"
-      >
-        <CircleHelp className="size-6" />
-      </NavButton>
 
       {/* Settings */}
       <NavButton
