@@ -144,4 +144,72 @@ describe("useProbeRefreshActions", () => {
     expect(manualRefreshIdsRef.current.has("codex")).toBe(false)
     errorSpy.mockRestore()
   })
+
+  it("allows retry during cooldown when the plugin is errored", () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000_000)
+    const startBatch = vi.fn().mockResolvedValue(undefined)
+
+    const { result } = renderHook(() =>
+      useProbeRefreshActions({
+        pluginSettings: { order: ["codex"], disabled: [] },
+        pluginStatesRef: {
+          current: {
+            codex: {
+              data: null,
+              loading: false,
+              error: "Usage request failed. Check your connection.",
+              lastManualRefreshAt: 999_000,
+              lastUpdatedAt: null,
+            },
+          },
+        },
+        manualRefreshIdsRef: { current: new Set<string>() },
+        resetAutoUpdateSchedule: vi.fn(),
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch,
+      })
+    )
+
+    act(() => {
+      result.current.handleRetryPlugin("codex")
+    })
+
+    expect(startBatch).toHaveBeenCalledWith(["codex"])
+    nowSpy.mockRestore()
+  })
+
+  it("keeps refresh cooldown for successful plugins", () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000_000)
+    const startBatch = vi.fn().mockResolvedValue(undefined)
+
+    const { result } = renderHook(() =>
+      useProbeRefreshActions({
+        pluginSettings: { order: ["codex"], disabled: [] },
+        pluginStatesRef: {
+          current: {
+            codex: {
+              data: null,
+              loading: false,
+              error: null,
+              lastManualRefreshAt: 999_000,
+              lastUpdatedAt: null,
+            },
+          },
+        },
+        manualRefreshIdsRef: { current: new Set<string>() },
+        resetAutoUpdateSchedule: vi.fn(),
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch,
+      })
+    )
+
+    act(() => {
+      result.current.handleRetryPlugin("codex")
+    })
+
+    expect(startBatch).not.toHaveBeenCalled()
+    nowSpy.mockRestore()
+  })
 })

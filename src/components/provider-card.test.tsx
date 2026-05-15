@@ -868,12 +868,14 @@ describe("ProviderCard", () => {
     expect(document.querySelector('[data-slot="progress-refreshing"]')).toBeNull()
   })
 
-  it("shows inline warning with stale data on refresh error", () => {
+  it("shows inline warning with stale data on refresh error", async () => {
+    const onRetry = vi.fn()
     render(
       <ProviderCard
         name="StaleErr"
         displayMode="used"
         error="Couldn't update data. Try again?"
+        onRetry={onRetry}
         lastUpdatedAt={Date.now() - 60_000}
         lines={[
           { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
@@ -886,6 +888,8 @@ describe("ProviderCard", () => {
     // in both the trigger and the tooltip content via our mocked Tooltip
     expect(screen.getAllByText("Couldn't update data. Try again?").length).toBeGreaterThan(0)
     expect(screen.queryByRole("alert")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
   it("shows full PluginError when errored without stale data", () => {

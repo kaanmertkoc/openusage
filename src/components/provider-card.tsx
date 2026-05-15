@@ -184,7 +184,7 @@ export function ProviderCard({
         <div className="flex items-center justify-between mb-2">
           <div className="relative flex items-center">
             <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
-            {onRetry && (
+            {onRetry && !error && (
               loading ? (
                 <Button
                   variant="ghost"
@@ -275,25 +275,42 @@ export function ProviderCard({
             ))}
           </div>
         )}
-        {error && !hasStaleData && <PluginError message={error} />}
+        {error && !hasStaleData && <PluginError message={error} onRetry={onRetry} />}
 
         {error && hasStaleData && (
-          <Tooltip>
-            <TooltipTrigger
-              render={(props) => (
-                <div
-                  {...props}
-                  className="flex items-center gap-1.5 mb-2 text-xs text-destructive"
-                >
-                  <AlertCircle className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate">{error}</span>
-                </div>
-              )}
-            />
-            <TooltipContent side="top" className="max-w-xs break-words text-xs">
-              {error}
-            </TooltipContent>
-          </Tooltip>
+          <div className="mb-2 flex items-center gap-2 text-xs text-destructive">
+            <Tooltip>
+              <TooltipTrigger
+                render={(props) => (
+                  <div
+                    {...props}
+                    className="flex min-w-0 flex-1 items-center gap-1.5"
+                  >
+                    <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{error}</span>
+                  </div>
+                )}
+              />
+              <TooltipContent side="top" className="max-w-xs break-words text-xs">
+                {error}
+              </TooltipContent>
+            </Tooltip>
+            {onRetry && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={(event) => {
+                  event.currentTarget.blur()
+                  onRetry()
+                }}
+                className="h-6 shrink-0 gap-1 px-1.5 text-destructive hover:text-destructive"
+              >
+                <RefreshCw className="size-3" />
+                Retry
+              </Button>
+            )}
+          </div>
         )}
 
         {loading && !hasStaleData && !error && (

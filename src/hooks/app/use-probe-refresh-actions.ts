@@ -46,7 +46,11 @@ export function useProbeRefreshActions({
       if (currentState?.loading) return
       if (manualRefreshIdsRef.current.has(id)) return
       const lastManualRefreshAt = currentState?.lastManualRefreshAt
-      if (lastManualRefreshAt && Date.now() - lastManualRefreshAt < REFRESH_COOLDOWN_MS) return
+      if (
+        lastManualRefreshAt &&
+        !currentState?.error &&
+        Date.now() - lastManualRefreshAt < REFRESH_COOLDOWN_MS
+      ) return
 
       resetAutoUpdateSchedule()
       startManualRefresh([id], "Failed to retry plugin:")
@@ -65,6 +69,7 @@ export function useProbeRefreshActions({
       if (currentState?.loading) return false
       if (manualRefreshIdsRef.current.has(id)) return false
       const lastManualRefreshAt = currentState?.lastManualRefreshAt
+      if (currentState?.error) return true
       if (!lastManualRefreshAt) return true
       return now - lastManualRefreshAt >= REFRESH_COOLDOWN_MS
     })
