@@ -1467,9 +1467,9 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     ports.into_iter().collect()
 }
 
-const CCUSAGE_VERSION: &str = "18.0.10";
-const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
-const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
+const CCUSAGE_VERSION: &str = "20.0.2";
+const CCUSAGE_PACKAGE_NAME: &str = "ccusage";
+const CCUSAGE_BIN_NAME: &str = "ccusage";
 const CCUSAGE_TIMEOUT_SECS: u64 = 15;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
@@ -1573,13 +1573,13 @@ fn resolve_ccusage_provider(opts: &CcusageQueryOpts, plugin_id: &str) -> Ccusage
 fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
     match provider {
         CcusageProvider::Claude => CcusageProviderConfig {
-            package_name: CCUSAGE_CLAUDE_PACKAGE_NAME,
-            npm_exec_bin: "ccusage",
+            package_name: CCUSAGE_PACKAGE_NAME,
+            npm_exec_bin: CCUSAGE_BIN_NAME,
             home_env_var: "CLAUDE_CONFIG_DIR",
         },
         CcusageProvider::Codex => CcusageProviderConfig {
-            package_name: CCUSAGE_CODEX_PACKAGE_NAME,
-            npm_exec_bin: "ccusage-codex",
+            package_name: CCUSAGE_PACKAGE_NAME,
+            npm_exec_bin: CCUSAGE_BIN_NAME,
             home_env_var: "CODEX_HOME",
         },
     }
@@ -3435,7 +3435,7 @@ mod tests {
     }
 
     #[test]
-    fn ccusage_runner_args_codex_use_scoped_package_and_bin() {
+    fn ccusage_runner_args_codex_use_unified_package_and_bin() {
         let opts = CcusageQueryOpts {
             provider: Some("codex".to_string()),
             since: Some("20260101".to_string()),
@@ -3455,7 +3455,7 @@ mod tests {
                 "--yes",
                 expected_npm_exec_package.as_str(),
                 "--",
-                "ccusage-codex",
+                "ccusage",
                 "daily",
                 "--json",
                 "--order",
@@ -3837,7 +3837,7 @@ wait
             &opts,
             CcusageProvider::Codex,
             "codex",
-            Duration::from_millis(100),
+            Duration::from_millis(500),
         );
 
         assert_eq!(result, CcusageRunnerResult::TimedOut);
