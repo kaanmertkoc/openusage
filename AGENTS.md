@@ -5,6 +5,16 @@
 - Be radically precise. No fluff. Pure information only (drop grammar; min tokens).
 - Critical: DO NOT OVER-ENGINEER! This app is typically used by 2-5 people, internally only.
 
+## Project Purpose
+- This repo is maintained as Kaan's personal stripped OpenUsage build on branch `personal`.
+- Goal: local/private usage monitor for personal use only, not a public distribution.
+- Keep `main` usable for upstream sync; do personal changes on `personal` unless explicitly told otherwise.
+- Prioritize privacy and local-first behavior over upstream parity.
+- Avoid reintroducing telemetry, upstream updater, upstream author/support/donation/changelog links, or unrelated branding.
+- Installed app identity should stay `OpenUsage Personal` / `com.kaanmertkoc.openusage.personal` unless explicitly changed.
+- Local HTTP API server is intentionally disabled for privacy; do not re-enable without explicit approval.
+- Prefer small practical fixes over generalized product work.
+
 ## Guardrails
 - Use `trash` for deletes
 - Use `mv` / `cp` to move and copy files

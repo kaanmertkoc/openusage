@@ -41,7 +41,7 @@ export function PluginError({ message, onRetry }: PluginErrorProps) {
           onClick={onRetry}
           className="h-6 shrink-0 gap-1 border-destructive/30 text-destructive hover:text-destructive"
         >
-          <RefreshCw className="size-3" />
+          <RefreshCw className="size-3 ml-2" />
           Retry
         </Button>
       )}

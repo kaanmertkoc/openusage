@@ -1626,6 +1626,8 @@ describe("claude plugin", () => {
       expect(last30).toBeTruthy()
       expect(last30.value).toContain("450 tokens")
       expect(last30.value).toContain("$1.50")
+      expect(last30.subtitle).toContain("300 in")
+      expect(last30.subtitle).toContain("150 out")
     })
 
     it("shows empty Today/Yesterday and Last 30 Days when today has no entry", async () => {
@@ -1779,6 +1781,25 @@ describe("claude plugin", () => {
       const todayLine = result.lines.find((l) => l.label === "Today")
       expect(todayLine).toBeTruthy()
       expect(todayLine.value).toContain("650 tokens")
+      expect(todayLine.subtitle).toContain("100 in")
+      expect(todayLine.subtitle).toContain("50 out")
+      expect(todayLine.subtitle).toContain("200 cache write")
+      expect(todayLine.subtitle).toContain("300 cache read")
+    })
+
+    it("derives total tokens from parts when totalTokens is missing", async () => {
+      const todayKey = localDayKey(new Date())
+      const ctx = makeProbeCtx({
+        ccusageResult: okUsage([
+            { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 200, cacheReadTokens: 300, totalCost: 1.0 },
+          ]),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("650 tokens")
+      expect(todayLine.subtitle).toContain("300 cache read")
     })
 
     it("formats compact token values with decimal and rounded K suffixes", async () => {

@@ -355,6 +355,58 @@ describe("codex plugin", () => {
     }
   })
 
+  it("displays token breakdown and derives missing totalTokens", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    const now = new Date()
+    const month = now.toLocaleString("en-US", { month: "short" })
+    const day = String(now.getDate()).padStart(2, "0")
+    const year = now.getFullYear()
+    const todayKey = month + " " + day + ", " + year
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+          { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 20, cacheReadTokens: 30, costUSD: 0.75 },
+          { date: "Feb 01, 2026", inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 100, costUSD: 1.0 },
+        ],
+      },
+    })
+
+    try {
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+
+      const today = result.lines.find((l) => l.label === "Today")
+      expect(today).toBeTruthy()
+      expect(today.value).toContain("200 tokens")
+      expect(today.subtitle).toContain("100 in")
+      expect(today.subtitle).toContain("50 out")
+      expect(today.subtitle).toContain("20 cache write")
+      expect(today.subtitle).toContain("30 cache read")
+
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+      expect(last30).toBeTruthy()
+      expect(last30.value).toContain("300 tokens")
+      expect(last30.subtitle).toContain("150 in")
+      expect(last30.subtitle).toContain("100 out")
+      expect(last30.subtitle).toContain("30 cache read")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("passes CODEX_HOME to ccusage via homePath", async () => {
     const ctx = makeCtx()
     ctx.host.env.get.mockImplementation((name) => (name === "CODEX_HOME" ? "/tmp/codex-home" : null))

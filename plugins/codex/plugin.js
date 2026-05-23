@@ -417,14 +417,56 @@
     return parts.join(" · ")
   }
 
+  function usageTokenPart(day, key) {
+    if (!day || typeof day !== "object" || day[key] == null) return 0
+    const value = Number(day[key])
+    return Number.isFinite(value) && value > 0 ? value : 0
+  }
+
+  function usageTokenBreakdown(day) {
+    const input = usageTokenPart(day, "inputTokens")
+    const output = usageTokenPart(day, "outputTokens")
+    const cacheCreation = usageTokenPart(day, "cacheCreationTokens")
+    const cacheRead = usageTokenPart(day, "cacheReadTokens")
+    let total = null
+    if (day && typeof day === "object" && day.totalTokens != null) {
+      const parsedTotal = Number(day.totalTokens)
+      if (Number.isFinite(parsedTotal) && parsedTotal >= 0) total = parsedTotal
+    }
+    if (total === null) {
+      total = input + output + cacheCreation + cacheRead
+    }
+    return { total: total, input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead }
+  }
+
+  function tokenBreakdownSubtitle(breakdown) {
+    const parts = []
+    if (breakdown.input > 0) parts.push(fmtTokens(breakdown.input) + " in")
+    if (breakdown.output > 0) parts.push(fmtTokens(breakdown.output) + " out")
+    if (breakdown.cacheCreation > 0) parts.push(fmtTokens(breakdown.cacheCreation) + " cache write")
+    if (breakdown.cacheRead > 0) parts.push(fmtTokens(breakdown.cacheRead) + " cache read")
+    return parts.length > 0 ? parts.join(" · ") : null
+  }
+
+  function addTokenBreakdown(total, next) {
+    total.input += next.input
+    total.output += next.output
+    total.cacheCreation += next.cacheCreation
+    total.cacheRead += next.cacheRead
+    total.total += next.total
+  }
+
   function pushDayUsageLine(lines, ctx, label, dayEntry) {
-    const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
+    const breakdown = usageTokenBreakdown(dayEntry)
     const cost = usageCostUsd(dayEntry)
-    if (tokens > 0) {
-      lines.push(ctx.line.text({
+    if (breakdown.total > 0) {
+      const line = {
         label: label,
-        value: costAndTokensLabel({ tokens: tokens, costUSD: cost })
-      }))
+        value: costAndTokensLabel({ tokens: breakdown.total, costUSD: cost })
+      }
+      const subtitle = tokenBreakdownSubtitle(breakdown)
+      if (subtitle) line.subtitle = subtitle
+      lines.push(ctx.line.text(line))
       return
     }
 
@@ -650,15 +692,13 @@
         pushDayUsageLine(lines, ctx, "Today", todayEntry)
         pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
 
-        let totalTokens = 0
+        const totalBreakdown = { total: 0, input: 0, output: 0, cacheCreation: 0, cacheRead: 0 }
         let totalCostNanos = 0
         let hasCost = false
         for (let i = 0; i < tokenUsage.daily.length; i++) {
           const day = tokenUsage.daily[i]
-          const dayTokens = Number(day.totalTokens)
-          if (Number.isFinite(dayTokens)) {
-            totalTokens += dayTokens
-          }
+          const dayBreakdown = usageTokenBreakdown(day)
+          addTokenBreakdown(totalBreakdown, dayBreakdown)
 
           const dayCost = usageCostUsd(day)
           if (dayCost != null) {
@@ -667,11 +707,14 @@
           }
         }
 
-        if (totalTokens > 0) {
-          lines.push(ctx.line.text({
+        if (totalBreakdown.total > 0) {
+          const line = {
             label: "Last 30 Days",
-            value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
-          }))
+            value: costAndTokensLabel({ tokens: totalBreakdown.total, costUSD: hasCost ? totalCostNanos / 1e9 : null })
+          }
+          const subtitle = tokenBreakdownSubtitle(totalBreakdown)
+          if (subtitle) line.subtitle = subtitle
+          lines.push(ctx.line.text(line))
         }
       }
 
