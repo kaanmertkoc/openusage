@@ -19,8 +19,12 @@ import {
   loadMenubarMetric,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadRetirementNoticeDismissedAt,
   loadStartOnLogin,
   loadTimeFormatMode,
+  RETIREMENT_NOTICE_INTERVAL_MS,
+  saveRetirementNoticeDismissedAt,
+  shouldShowRetirementNotice,
   migrateLegacyTraySettings,
   migrateWindsurfToDevin,
   loadThemeMode,
@@ -431,5 +435,35 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  it("loads null retirement notice dismissal when missing", async () => {
+    await expect(loadRetirementNoticeDismissedAt()).resolves.toBeNull()
+  })
+
+  it("ignores invalid retirement notice dismissal value", async () => {
+    storeState.set("retirementNoticeDismissedAt", "nope")
+    await expect(loadRetirementNoticeDismissedAt()).resolves.toBeNull()
+  })
+
+  it("saves and loads retirement notice dismissal timestamp", async () => {
+    await saveRetirementNoticeDismissedAt(1234)
+    await expect(loadRetirementNoticeDismissedAt()).resolves.toBe(1234)
+  })
+
+  it("shows retirement notice when never dismissed", () => {
+    expect(shouldShowRetirementNotice(null, Date.now())).toBe(true)
+  })
+
+  it("hides retirement notice within the interval", () => {
+    const now = Date.now()
+    expect(shouldShowRetirementNotice(now - 1000, now)).toBe(false)
+  })
+
+  it("re-shows retirement notice after the interval elapses", () => {
+    const now = Date.now()
+    expect(
+      shouldShowRetirementNotice(now - RETIREMENT_NOTICE_INTERVAL_MS, now)
+    ).toBe(true)
   })
 })
