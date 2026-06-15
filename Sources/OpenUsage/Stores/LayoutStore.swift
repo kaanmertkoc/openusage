@@ -106,8 +106,13 @@ final class LayoutStore {
         }
         metricOrderByProvider = initialMetricOrder
 
-        pinnedMetricIDs = Set((defaults.stringArray(forKey: pinsKey) ?? [])
-            .filter { registry.descriptor(id: $0) != nil })
+        // Seed default pins on first launch (no saved value) so the menu bar shows real numbers out of
+        // the box; a saved value — including an empty one the user produced by unpinning — is respected.
+        if let savedPins = defaults.stringArray(forKey: pinsKey) {
+            pinnedMetricIDs = Set(savedPins.filter { registry.descriptor(id: $0) != nil })
+        } else {
+            pinnedMetricIDs = Set(DefaultLayout.pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+        }
         menuBarStyle = defaults.string(forKey: menuBarStyleKey)
             .flatMap(MenuBarStyle.init(rawValue:)) ?? .text
 
@@ -352,7 +357,7 @@ final class LayoutStore {
             .map { PlacedWidget(descriptorID: $0) }
         metricOrderByProvider = Self.defaultMetricOrder(registry: registry, placed: placed)
         persistMetricOrder()
-        pinnedMetricIDs.removeAll()
+        pinnedMetricIDs = Set(DefaultLayout.pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         persistPins()
         persist()
     }

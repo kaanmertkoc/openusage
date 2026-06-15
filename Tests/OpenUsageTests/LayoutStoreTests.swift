@@ -99,6 +99,37 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.orderedSupportedMetrics(for: "claude").map(\.id).first, "claude.extra")
     }
 
+    func testFreshStoreSeedsDefaultPins() {
+        let store = makeStore("SeedPins")
+        let expected = Set(DefaultLayout.pinnedMetricIDs.filter { MockData.descriptor($0) != nil })
+
+        XCTAssertFalse(expected.isEmpty, "fixture registry should know some default-pinned metrics")
+        XCTAssertEqual(store.pinnedMetricIDs, expected)
+    }
+
+    func testUnpinningEverythingPersistsAndIsNotReseeded() {
+        let defaults = makeDefaults("UnpinAll")
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertFalse(store.pinnedMetricIDs.isEmpty)
+
+        for id in store.pinnedMetricIDs { store.setPinned(false, for: id) }
+        XCTAssertTrue(store.pinnedMetricIDs.isEmpty)
+
+        let reloaded = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertTrue(reloaded.pinnedMetricIDs.isEmpty, "an explicitly emptied pin set must not be reseeded")
+    }
+
+    func testResetToDefaultRestoresDefaultPins() {
+        let store = makeStore("ResetPins")
+        for id in store.pinnedMetricIDs { store.setPinned(false, for: id) }
+        XCTAssertTrue(store.pinnedMetricIDs.isEmpty)
+
+        store.resetToDefault()
+
+        let expected = Set(DefaultLayout.pinnedMetricIDs.filter { MockData.descriptor($0) != nil })
+        XCTAssertEqual(store.pinnedMetricIDs, expected)
+    }
+
     private func makeStore(_ name: String) -> LayoutStore {
         LayoutStore(registry: .mock, defaults: makeDefaults(name), storageKey: "layout")
     }
