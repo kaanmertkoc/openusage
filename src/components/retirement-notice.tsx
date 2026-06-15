@@ -24,6 +24,9 @@ export function RetirementNotice() {
         setVisible(shouldShowRetirementNotice(dismissedAt, Date.now()))
       } catch (error) {
         console.error("Failed to load retirement notice state:", error)
+        // Fail open: a load error shouldn't silently swallow the retirement
+        // reminder, so show it rather than hiding it.
+        if (isMounted) setVisible(true)
       }
     }
 

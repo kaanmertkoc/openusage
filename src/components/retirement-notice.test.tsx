@@ -62,12 +62,11 @@ describe("RetirementNotice", () => {
     expect(typeof settingsState.saveMock.mock.calls[0][0]).toBe("number")
   })
 
-  it("stays hidden when load fails", async () => {
+  it("shows the notice when load fails (fail open)", async () => {
     settingsState.loadMock.mockRejectedValue(new Error("boom"))
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     render(<RetirementNotice />)
-    await waitFor(() => expect(settingsState.loadMock).toHaveBeenCalled())
-    expect(screen.queryByText("OpenUsage Has Moved")).not.toBeInTheDocument()
+    expect(await screen.findByText("OpenUsage Has Moved")).toBeInTheDocument()
     errorSpy.mockRestore()
   })
 })

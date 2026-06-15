@@ -10,6 +10,7 @@ build is retired and pointing them to the new app.
   `retirementNoticeDismissedAt`.
 - The banner reappears once 7 days have passed since the last dismissal.
 - If it has never been dismissed, it is shown.
+- If the stored state can't be read, it fails open (shows the banner) and logs the error.
 
 ## Where it lives
 - UI: `src/components/retirement-notice.tsx`, rendered by `src/pages/overview.tsx`.
