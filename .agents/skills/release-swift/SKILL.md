@@ -141,12 +141,12 @@ The pipeline lives in `.github/workflows/release.yml`. It builds and notarizes t
 
 ## Versioning
 
-- The tag sets the human version: `v1.2.3` -> `CFBundleShortVersionString = 1.2.3`.
+- The tag sets the human version as-is, including any pre-release suffix: `v0.7.0-beta.2` ->
+  `CFBundleShortVersionString = 0.7.0-beta.2`. That same string appears in Sparkle's update prompt and
+  in the app footer/About, so they always match. (Sparkle's docs use a beta short version too, e.g.
+  `2.0b1`; Developer ID notarization does not require it to be numeric.)
 - `CFBundleVersion` is the git commit count, which always increases. Sparkle compares it to decide
-  whether a build is newer.
-- The full tag version, including any pre-release suffix (e.g. `0.7.0-beta.2`), is written to the
-  `OUMarketingVersion` Info.plist key and shown in the app footer and About tab. `CFBundleShortVersionString`
-  stays numeric so Sparkle and Gatekeeper are unaffected.
+  whether a build is newer - not the short version string.
 
 ## One-time setup
 

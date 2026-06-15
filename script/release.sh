@@ -30,10 +30,11 @@ APP_NAME="OpenUsage"
 BUNDLE_ID="com.robinebers.openusage"
 MIN_SYSTEM_VERSION="26.0"
 VERSION="$OPENUSAGE_VERSION"
-# CFBundleShortVersionString must be numeric (x.y.z); strip any pre-release suffix like "-beta.1".
-# The full VERSION (with any suffix) is used for the DMG filename and the OUMarketingVersion Info.plist
-# key, which is what the app shows in its footer/About (see AppInfo.swift).
-SHORT_VERSION="${VERSION%%-*}"
+# CFBundleShortVersionString carries the full version, including any pre-release suffix (e.g.
+# "0.7.0-beta.1"). This is the human-readable string Sparkle shows in its update prompt and the app
+# shows in its footer/About, so they always match. Sparkle compares builds by CFBundleVersion (the
+# monotonic commit count below), not this string, and Developer ID notarization does not require it to
+# be numeric. (Sparkle's own docs use a beta short version, e.g. "2.0b1".)
 BUILD="${OPENUSAGE_BUILD:-$(git rev-list --count HEAD)}"
 FEED_URL="${FEED_URL:-https://robinebers.github.io/openusage/appcast.xml}"
 DMG_NAME="$APP_NAME-$VERSION.dmg"
@@ -109,9 +110,8 @@ cat >"$APP_CONTENTS/Info.plist" <<PLIST
   <key>CFBundleName</key><string>$APP_NAME</string>
   <key>CFBundleDisplayName</key><string>$APP_NAME</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$SHORT_VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
-  <key>OUMarketingVersion</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>$MIN_SYSTEM_VERSION</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>LSUIElement</key><true/>
