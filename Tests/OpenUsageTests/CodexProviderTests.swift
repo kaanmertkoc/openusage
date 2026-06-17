@@ -90,6 +90,57 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(CodexUsageMapper.creditsLabel(remaining: 30000), "$1,200.00 · 30,000 credits")
     }
 
+    func testShowsRateLimitResetsBeforeCredits() throws {
+        let body = Data("""
+        {
+          "rate_limit_reset_credits": { "available_count": 1 },
+          "credits": { "balance": 100 }
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(badge(mapped.lines, "Rate Limit Resets")?.text, "1 available")
+        XCTAssertEqual(badge(mapped.lines, "Rate Limit Resets")?.colorHex, "#22c55e")
+
+        let resetIndex = mapped.lines.firstIndex { $0.label == "Rate Limit Resets" }
+        let creditsIndex = mapped.lines.firstIndex { $0.label == "Credits" }
+        XCTAssertNotNil(resetIndex)
+        XCTAssertNotNil(creditsIndex)
+        if let resetIndex, let creditsIndex {
+            XCTAssertLessThan(resetIndex, creditsIndex)
+        }
+    }
+
+    func testShowsZeroRateLimitResetsAsMutedBadge() throws {
+        let body = Data(#"{ "rate_limit_reset_credits": { "available_count": 0 } }"#.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(badge(mapped.lines, "Rate Limit Resets")?.text, "0 available")
+        XCTAssertEqual(badge(mapped.lines, "Rate Limit Resets")?.colorHex, "#a3a3a3")
+    }
+
+    func testOmitsRateLimitResetsWhenCountMalformed() throws {
+        let body = Data(#"{ "rate_limit_reset_credits": { "available_count": null } }"#.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertNil(badge(mapped.lines, "Rate Limit Resets"))
+    }
+
     private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?, periodDurationMs: Int?)? {
         guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _) = lines.first(where: { $0.label == label }) else {
             return nil
@@ -102,6 +153,13 @@ final class CodexUsageMapperTests: XCTestCase {
             return nil
         }
         return value
+    }
+
+    private func badge(_ lines: [MetricLine], _ label: String) -> (text: String, colorHex: String?)? {
+        guard case .badge(_, let text, let colorHex, _) = lines.first(where: { $0.label == label }) else {
+            return nil
+        }
+        return (text, colorHex)
     }
 
     private func makeDate(_ value: String) -> Date {
