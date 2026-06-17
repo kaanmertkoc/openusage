@@ -91,6 +91,21 @@ extension WidgetDescriptor {
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 
+    /// Unbounded count rendered verbatim from the provider's `.text` line (e.g. Codex rate-limit
+    /// resets "1 available"); the parsed count still feeds the menu-bar tile's compact value, so the
+    /// tray and the popover never diverge.
+    static func verbatimCount(
+        id: String,
+        provider: Provider,
+        title: String,
+        metricLabel: String? = nil
+    ) -> WidgetDescriptor {
+        var sample = WidgetData(title: title, icon: provider.icon,
+                                kind: .count, used: 0, limit: nil)
+        sample.preservesRawText = true
+        return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
+    }
+
     /// Unbounded count resolved from a provider `.badge` line via `valueTextOverride`
     /// (e.g. Grok pay-as-you-go).
     static func badge(

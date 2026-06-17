@@ -90,6 +90,55 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(CodexUsageMapper.creditsLabel(remaining: 30000), "$1,200.00 · 30,000 credits")
     }
 
+    func testShowsRateLimitResetsBeforeCredits() throws {
+        let body = Data("""
+        {
+          "rate_limit_reset_credits": { "available_count": 1 },
+          "credits": { "balance": 100 }
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(text(mapped.lines, "Rate Limit Resets"), "1 available")
+
+        let resetIndex = mapped.lines.firstIndex { $0.label == "Rate Limit Resets" }
+        let creditsIndex = mapped.lines.firstIndex { $0.label == "Credits" }
+        XCTAssertNotNil(resetIndex)
+        XCTAssertNotNil(creditsIndex)
+        if let resetIndex, let creditsIndex {
+            XCTAssertLessThan(resetIndex, creditsIndex)
+        }
+    }
+
+    func testShowsZeroRateLimitResets() throws {
+        let body = Data(#"{ "rate_limit_reset_credits": { "available_count": 0 } }"#.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(text(mapped.lines, "Rate Limit Resets"), "0 available")
+    }
+
+    func testOmitsRateLimitResetsWhenCountMalformed() throws {
+        let body = Data(#"{ "rate_limit_reset_credits": { "available_count": null } }"#.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertNil(text(mapped.lines, "Rate Limit Resets"))
+    }
+
     private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?, periodDurationMs: Int?)? {
         guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _) = lines.first(where: { $0.label == label }) else {
             return nil

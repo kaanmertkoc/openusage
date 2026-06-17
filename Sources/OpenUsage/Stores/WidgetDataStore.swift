@@ -245,7 +245,10 @@ final class WidgetDataStore {
                             unboundedValueWord: sample.unboundedValueWord)
         case .count:
             guard let count = Self.firstNumber(in: value) else { return sample }
+            // A raw-text descriptor shows the provider's line verbatim (the parsed count above still
+            // feeds the menu bar's compact value); otherwise the value is reformatted from `used`.
             return textData(sample, kind: .count, used: count, limit: sample.limit,
+                            valueTextOverride: sample.preservesRawText ? value : nil,
                             unboundedValueWord: sample.unboundedValueWord)
         case .percent:
             guard let percent = Self.firstNumber(in: value) else { return sample }

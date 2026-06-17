@@ -25,6 +25,7 @@ final class CodexProvider: ProviderRuntime {
         [
             .percent(id: "codex.session", provider: provider, title: "Session"),
             .percent(id: "codex.weekly", provider: provider, title: "Weekly"),
+            .verbatimCount(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
             .verbatimDollars(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
             .spend(id: "codex.today", provider: provider, title: "Today", estimated: true),
             .spend(id: "codex.yesterday", provider: provider, title: "Yesterday", estimated: true),

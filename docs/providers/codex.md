@@ -8,6 +8,7 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 |---|---|
 | Session | 5-hour rolling window usage |
 | Weekly | 7-day window usage |
+| Rate Limit Resets | On-demand rate-limit reset credits, shown as e.g. `1 available` |
 | Extra Usage | Flex credits, shown verbatim as dollars + credits (e.g. `$31.84 · 796 credits`) |
 | Today / Yesterday / Last 30 Days | Local spend estimates (see below) |
 | Plan | Your plan name (optional widget) |
@@ -29,3 +30,5 @@ Today / Yesterday / Last 30 Days are computed **locally** from your Codex logs b
 ## Under the hood
 
 `GET https://chatgpt.com/backend-api/wham/usage` with the Codex OAuth token; refresh via `auth.openai.com`. A 401/403 triggers one token refresh and retry.
+
+When the response includes `rate_limit_reset_credits.available_count`, OpenUsage shows that count as the "Rate Limit Resets" row (e.g. `1 available`), placed before Credits.

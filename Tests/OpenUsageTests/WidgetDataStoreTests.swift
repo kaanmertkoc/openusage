@@ -205,6 +205,43 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(used.headline, remaining.headline)
     }
 
+    func testRateLimitResetsTileShowsCountInTrayAndRawTextInPopover() async {
+        // Regression: the menu-bar tile and the popover row must resolve from one value. The provider
+        // line is "1 available" — the popover shows it verbatim while the tray uses the parsed count.
+        // A prior bug backed the tile with display text only, leaving `used` at 0, so a pinned tile
+        // read "0" while the popover correctly read "1 available".
+        let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
+        let descriptor = WidgetDescriptor.verbatimCount(
+            id: "codex.rateLimitResets",
+            provider: provider,
+            title: "Rate Limit Resets",
+            metricLabel: "Rate Limit Resets"
+        )
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.text(label: "Rate Limit Resets", value: "1 available")]
+            )
+        )
+        let defaults = makeUserDefaults("codex-resets")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+            defaults: defaults
+        )
+        await store.refreshAll()
+
+        let data = store.data(for: descriptor)
+        XCTAssertTrue(data.hasData)
+        XCTAssertFalse(data.isBounded)
+        XCTAssertEqual(data.unboundedDetail, "1 available")   // popover row
+        XCTAssertEqual(data.displayedValue, 1)                // menu-bar tile's compact value
+    }
+
     func testCreditsLabelFloorsAndClampsBalance() {
         XCTAssertEqual(CodexUsageMapper.creditsLabel(remaining: 820.9), "$32.80 · 820 credits")
         XCTAssertEqual(CodexUsageMapper.creditsLabel(remaining: -5), "$0.00 · 0 credits")

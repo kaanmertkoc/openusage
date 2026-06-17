@@ -71,6 +71,15 @@ enum CodexUsageMapper {
         appendAdditionalRateLimits(from: body, to: &lines, now: now)
         appendReviewLimit(from: body, to: &lines, now: now)
 
+        // On-demand rate-limit reset credits ("N available"), shown before Credits — mirrors the JS
+        // plugin (PR #577). A verbatim `.text` line (backed by a `verbatimCount` widget tile) so every
+        // surface resolves from one value: the dashboard/popover read "N available" while the menu-bar
+        // tile shows the parsed count — they never diverge.
+        if let resets = readResetCredits(body), resets >= 0 {
+            let count = Int(resets.rounded(.down))
+            lines.append(.text(label: "Rate Limit Resets", value: "\(count) available"))
+        }
+
         if let remaining = readCreditsRemaining(response: response, body: body) {
             lines.append(.text(label: "Credits", value: creditsLabel(remaining: remaining)))
         }
@@ -170,6 +179,13 @@ enum CodexUsageMapper {
         let credits = max(0, Int(remaining.rounded(.down)))
         let usd = Double(credits) * creditUSDRate
         return Formatters.currency(usd) + " · \(credits.formatted(.number.locale(Locale(identifier: "en_US")))) credits"
+    }
+
+    /// On-demand reset credits from `rate_limit_reset_credits.available_count`. `ProviderParse.number`
+    /// returns nil for missing/null/non-numeric values, so malformed counts are skipped (matches JS).
+    private static func readResetCredits(_ body: [String: Any]) -> Double? {
+        guard let resets = body["rate_limit_reset_credits"] as? [String: Any] else { return nil }
+        return ProviderParse.number(resets["available_count"])
     }
 
     private static func readCreditsRemaining(response: HTTPResponse, body: [String: Any]) -> Double? {
