@@ -35,9 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // Let only the `SMAppService` login item drive startup: opt out of AppKit's reopen-on-login
-        // so a reboot doesn't also restore us and race the login item into a duplicate (#635). The
-        // guard above resolves a lingering crashed copy; this removes the reboot race the guard alone
-        // can't reliably win (both launches register near-simultaneously).
+        // so a reboot doesn't also restore us and race the login item in the first place. The guard
+        // above already resolves the race deterministically (lowest PID survives) even if both fire;
+        // this just avoids the wasted second launch.
         NSApp.disableRelaunchOnLogin()
         // App-wide theme override (NSApp.appearance): the popover ignores SwiftUI's
         // preferredColorScheme, so the override is applied at the AppKit level once at launch;

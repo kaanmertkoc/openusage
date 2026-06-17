@@ -8,24 +8,37 @@ import AppKit
 /// unit-tested without a second running process.
 @MainActor
 enum SingleInstanceGuard {
-    /// Pure decision: another copy already owns the slot when some running PID sharing our bundle id
-    /// isn't our own. Our own PID is filtered out so a solo launch never counts itself.
-    static func isDuplicate(myPID: pid_t, runningPIDs: [pid_t]) -> Bool {
-        runningPIDs.contains { $0 != myPID }
+    /// Pure decision: the PID of the instance we should yield to, or `nil` if we should keep running.
+    ///
+    /// Tie-break is deterministic — the lowest-PID instance is the survivor; every other copy yields
+    /// to it. This matters for the reboot race the guard targets: when two launches register at once,
+    /// a naive "yield if any other instance exists" rule makes *both* yield and terminate, leaving
+    /// zero running instances. Lowest-PID-wins guarantees exactly one survivor. (The one theoretical
+    /// hole — PID wraparound between an older instance's launch and ours — needs ~99k intervening PIDs
+    /// and is negligible.)
+    static func instanceToYieldTo(myPID: pid_t, runningPIDs: [pid_t]) -> pid_t? {
+        guard let lowestPeer = runningPIDs.filter({ $0 != myPID }).min(), lowestPeer < myPID else {
+            return nil
+        }
+        return lowestPeer
     }
 
-    /// Live check + handoff. When an existing instance owns the slot, hands focus to it and returns
-    /// `true` so the caller bows out before grabbing the local-API port or adding a status item.
-    /// Returns `false` (no-op) when we are the only copy, or when unbundled (`swift run`/preview) has
-    /// no bundle identifier to match against.
+    /// Live check + handoff. When another instance owns the slot, hands focus to the surviving copy
+    /// and returns `true` so the caller bows out before grabbing the local-API port or adding a status
+    /// item. Returns `false` (no-op) when we are the survivor, or when unbundled (`swift run`/preview)
+    /// has no bundle identifier to match against.
     static func deferToExistingInstance() -> Bool {
         guard let bundleID = Bundle.main.bundleIdentifier else { return false }
         let me = NSRunningApplication.current
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        guard isDuplicate(myPID: me.processIdentifier, runningPIDs: running.map(\.processIdentifier)) else {
+        guard let survivorPID = instanceToYieldTo(
+            myPID: me.processIdentifier,
+            runningPIDs: running.map(\.processIdentifier)
+        ) else {
             return false
         }
-        running.first { $0.processIdentifier != me.processIdentifier }?.activate()
+        // Resolved from the same snapshot the decision used, so the survivor is still present.
+        running.first { $0.processIdentifier == survivorPID }?.activate()
         return true
     }
 }
