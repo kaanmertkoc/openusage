@@ -16,9 +16,9 @@ import SwiftUI
 final class PopUpMenuAnchor {
     weak var view: NSView?
 
-    /// Drops `menu` from the anchor's bottom-leading corner. SwiftUI hosts representables in flipped
-    /// views, so `bounds.maxY` is the button's bottom edge — the menu opens downward from there, and
-    /// macOS flips it upward automatically near the screen edge.
+    /// Drops `menu` from the anchor's bottom-leading corner. The anchor is a flipped view (see
+    /// `FlippedAnchorView`), so `bounds.maxY` is the button's bottom edge — the menu opens downward
+    /// from there, and macOS flips it upward automatically near the screen edge.
     func present(_ menu: NSMenu) {
         guard let view else { return }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
@@ -31,7 +31,7 @@ struct PopUpMenuAnchorView: NSViewRepresentable {
     let anchor: PopUpMenuAnchor
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+        let view = FlippedAnchorView()
         anchor.view = view
         return view
     }
@@ -39,6 +39,12 @@ struct PopUpMenuAnchorView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         anchor.view = nsView
     }
+}
+
+/// A flipped anchor so `bounds.maxY` is the button's *bottom* edge — a plain `NSView` is unflipped
+/// (origin bottom-left), which would put `maxY` at the top and attach the menu to the wrong edge.
+private final class FlippedAnchorView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// An `NSMenuItem` that runs a closure when selected, so menus can be built inline without a separate
