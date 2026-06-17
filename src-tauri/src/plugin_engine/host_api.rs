@@ -1470,7 +1470,10 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
 const CCUSAGE_VERSION: &str = "20.0.2";
 const CCUSAGE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_BIN_NAME: &str = "ccusage";
-const CCUSAGE_TIMEOUT_SECS: u64 = 15;
+// 60s: the large personal ~/.claude dataset is ~7.5s standalone, but with two Claude
+// tiles (personal + work) now running ccusage in parallel, CPU contention can stretch
+// the slow query well past a tight 15s cap. 60s gives ample headroom.
+const CCUSAGE_TIMEOUT_SECS: u64 = 60;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
 #[derive(Default, serde::Deserialize)]
@@ -1489,28 +1492,37 @@ enum CcusageProvider {
     Codex,
 }
 
-static CCUSAGE_ACTIVE_PROVIDERS: OnceLock<Mutex<HashSet<CcusageProvider>>> = OnceLock::new();
+// Keyed by plugin_id (tile identity), NOT by provider. The guard only exists to
+// stop a SINGLE tile from launching overlapping ccusage queries. Keying by provider
+// was wrong: two tiles for the same provider (e.g. `claude` + `claude-work` for two
+// Claude accounts) both resolve to CcusageProvider::Claude, so the second to probe
+// got None and returned `runner_failed` without ever running ccusage — silently
+// dropping that account's daily lines. plugin_id is unique per tile, so distinct
+// accounts run concurrently (two standalone ccusage processes coexist fine).
+static CCUSAGE_ACTIVE_QUERIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 struct CcusageQueryGuard {
-    provider: CcusageProvider,
+    key: String,
 }
 
 impl CcusageQueryGuard {
-    fn acquire(provider: CcusageProvider) -> Option<Self> {
-        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+    fn acquire(key: &str) -> Option<Self> {
+        let active = CCUSAGE_ACTIVE_QUERIES.get_or_init(|| Mutex::new(HashSet::new()));
         let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
-        if !active.insert(provider) {
+        if !active.insert(key.to_string()) {
             return None;
         }
-        Some(Self { provider })
+        Some(Self {
+            key: key.to_string(),
+        })
     }
 }
 
 impl Drop for CcusageQueryGuard {
     fn drop(&mut self) {
-        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+        let active = CCUSAGE_ACTIVE_QUERIES.get_or_init(|| Mutex::new(HashSet::new()));
         let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
-        active.remove(&self.provider);
+        active.remove(&self.key);
     }
 }
 
@@ -1548,6 +1560,10 @@ struct CcusageProviderConfig {
     package_name: &'static str,
     npm_exec_bin: &'static str,
     home_env_var: &'static str,
+    // Unified ccusage subcommand that scopes output to ONE agent. Without it, bare
+    // `ccusage daily` reports EVERY detected agent (Claude + Codex + Gemini + ...)
+    // merged, so a Claude tile would include Codex/GPT spend and vice-versa.
+    agent_subcommand: &'static str,
 }
 
 fn parse_ccusage_provider(value: &str) -> Option<CcusageProvider> {
@@ -1576,11 +1592,13 @@ fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
             package_name: CCUSAGE_PACKAGE_NAME,
             npm_exec_bin: CCUSAGE_BIN_NAME,
             home_env_var: "CLAUDE_CONFIG_DIR",
+            agent_subcommand: "claude",
         },
         CcusageProvider::Codex => CcusageProviderConfig {
             package_name: CCUSAGE_PACKAGE_NAME,
             npm_exec_bin: CCUSAGE_BIN_NAME,
             home_env_var: "CODEX_HOME",
+            agent_subcommand: "codex",
         },
     }
 }
@@ -1828,6 +1846,9 @@ fn ccusage_runner_args(
         CcusageRunnerKind::Npx => vec!["--yes".to_string(), package_spec],
     };
 
+    // Scope to a single agent (e.g. `ccusage claude daily ...`) so the tile reports
+    // only its own provider's usage, not every detected agent merged together.
+    args.push(config.agent_subcommand.to_string());
     append_ccusage_common_args(&mut args, opts);
     args
 }
@@ -2148,7 +2169,7 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
-                let Some(_active_query) = CcusageQueryGuard::acquire(provider) else {
+                let Some(_active_query) = CcusageQueryGuard::acquire(&pid) else {
                     log::warn!("[plugin:{}] ccusage query already running", pid);
                     return Ok(serde_json::json!({ "status": "runner_failed" }).to_string());
                 };
@@ -3348,6 +3369,7 @@ mod tests {
             vec![
                 "--silent",
                 expected_claude_package.as_str(),
+                "claude",
                 "daily",
                 "--json",
                 "--order",
@@ -3366,6 +3388,7 @@ mod tests {
                 "-s",
                 "dlx",
                 expected_claude_package.as_str(),
+                "claude",
                 "daily",
                 "--json",
                 "--order",
@@ -3384,6 +3407,7 @@ mod tests {
                 "dlx",
                 "-q",
                 expected_claude_package.as_str(),
+                "claude",
                 "daily",
                 "--json",
                 "--order",
@@ -3405,6 +3429,7 @@ mod tests {
                 expected_npm_exec_package.as_str(),
                 "--",
                 "ccusage",
+                "claude",
                 "daily",
                 "--json",
                 "--order",
@@ -3422,6 +3447,7 @@ mod tests {
             vec![
                 "--yes",
                 expected_claude_package.as_str(),
+                "claude",
                 "daily",
                 "--json",
                 "--order",
@@ -3456,6 +3482,7 @@ mod tests {
                 expected_npm_exec_package.as_str(),
                 "--",
                 "ccusage",
+                "codex",
                 "daily",
                 "--json",
                 "--order",
@@ -3473,6 +3500,7 @@ mod tests {
             vec![
                 "--yes",
                 expected_codex_package.as_str(),
+                "codex",
                 "daily",
                 "--json",
                 "--order",
@@ -3734,20 +3762,22 @@ Saved lockfile
     }
 
     #[test]
-    fn ccusage_query_guard_blocks_overlapping_provider_query() {
-        let first = CcusageQueryGuard::acquire(CcusageProvider::Codex)
-            .expect("first query should acquire guard");
+    fn ccusage_query_guard_blocks_overlapping_query_for_same_tile() {
+        let first =
+            CcusageQueryGuard::acquire("claude").expect("first query should acquire guard");
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_none(),
-            "second query for same provider should be blocked"
+            CcusageQueryGuard::acquire("claude").is_none(),
+            "second query for the same tile should be blocked"
         );
+        // Two Claude accounts (same provider, different tiles) must NOT block each
+        // other — this is the multi-account fix.
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Claude).is_some(),
-            "different provider should have its own guard"
+            CcusageQueryGuard::acquire("claude-work").is_some(),
+            "a different tile should have its own guard"
         );
         drop(first);
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_some(),
+            CcusageQueryGuard::acquire("claude").is_some(),
             "guard should release on drop"
         );
     }
@@ -3785,7 +3815,7 @@ Saved lockfile
         );
         assert_eq!(
             format_ccusage_timeout(std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS)),
-            "15s"
+            "60s"
         );
     }
 

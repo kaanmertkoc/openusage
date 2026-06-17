@@ -377,6 +377,39 @@ describe("claude plugin", () => {
     expect(result.lines.find((line) => line.label === "Last 30 Days")?.value).toContain("150 tokens")
   })
 
+  it("matches Today/Yesterday when ccusage daily entries use `period` (unified package)", () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    const dayKey = (d) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const today = dayKey(new Date())
+    const yesterday = dayKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+    ctx.host.ccusage.query = vi.fn(() => ({
+      status: "ok",
+      data: {
+        daily: [
+          { period: today, totalTokens: 300, totalCost: 1.5 },
+          { period: yesterday, totalTokens: 150, totalCost: 0.75 },
+        ],
+      },
+    }))
+
+    const result = plugin.probe(ctx)
+    const todayLine = result.lines.find((l) => l.label === "Today")
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(todayLine.value).toContain("300 tokens")
+    expect(todayLine.value).toContain("$1.50")
+    expect(yesterdayLine.value).toContain("150 tokens")
+  })
+
   it("renders usage lines from response", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>

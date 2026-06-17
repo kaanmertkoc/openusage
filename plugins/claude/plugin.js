@@ -853,7 +853,9 @@
       let todayEntry = null
       let yesterdayEntry = null
       for (let i = 0; i < usage.daily.length; i++) {
-        const usageDayKey = dayKeyFromUsageDate(usage.daily[i].date)
+        // Unified ccusage emits the day under `period` ("2026-06-17"); older/other
+        // shapes used `date`. Support both so Today/Yesterday match correctly.
+        const usageDayKey = dayKeyFromUsageDate(usage.daily[i].date ?? usage.daily[i].period)
         if (usageDayKey === todayKey) {
           todayEntry = usage.daily[i]
           continue
