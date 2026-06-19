@@ -316,11 +316,53 @@ final class GrokProviderTests: XCTestCase {
         // Existing credit lines stay; the three spend tiles are appended from the local log.
         XCTAssertEqual(progress(snapshot.lines, "Credits used")?.used, 25)
         XCTAssertEqual(values(snapshot.lines, "Today"),
-                       [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count)])
+                       [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Yesterday"),
-                       [MetricValue(number: 15.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count)])
+                       [MetricValue(number: 15.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Last 30 Days"),
-                       [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count)])
+                       [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
+    }
+
+    func testPeriodWithoutUsageReadsZeroDollarsAndTokens() async {
+        // Regression for the reported "Today 0" bug: the log exists and has yesterday's usage, but no
+        // inference ran today. Today is a real, measured zero → "$0.00 · 0 tokens", never a bare "0"
+        // and never "No data" (the log was readable). "No data" is reserved for a missing/unreadable log.
+        let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
+        let files = FakeFiles([
+            GrokAuthStore.authPath: #"{"https://auth.x.ai::client":{"key":"token","refresh_token":"refresh","expires_at":"2026-07-01T00:00:00.000Z"}}"#
+        ])
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.billingURL {
+                return HTTPResponse(statusCode: 200, headers: [:], body: billingBody(used: 2500, monthlyLimit: 10000, onDemandCap: 0))
+            }
+            if request.url == GrokUsageClient.settingsURL {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"subscription_tier_display":"SuperGrok Heavy"}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+        // Only yesterday (06-17) has an inference row; today (06-18) has none.
+        let log = """
+        {"ts":"2026-06-17T09:00:00.000Z","pid":2,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
+        {"ts":"2026-06-17T10:00:00.000Z","pid":2,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":0,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
+        """
+        let scanner = GrokLogUsageScanner(
+            files: FakeFiles(["/home/test/.grok/logs/unified.jsonl": log]),
+            environment: FakeEnvironment(),
+            homeDirectory: { URL(fileURLWithPath: "/home/test") }
+        )
+        let provider = GrokProvider(
+            authStore: GrokAuthStore(files: files, now: { now }),
+            usageClient: GrokUsageClient(httpClient: httpClient),
+            logUsageScanner: scanner,
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        // No usage today is a measured zero, not absence → "$0.00 · 0 tokens".
+        XCTAssertEqual(values(snapshot.lines, "Today"),
+                       [MetricValue(number: 0, kind: .dollars, estimated: true), MetricValue(number: 0, kind: .count, label: "tokens")])
+        XCTAssertNotNil(values(snapshot.lines, "Yesterday"))          // yesterday had real usage
     }
 
     private func noLogScanner() -> GrokLogUsageScanner {

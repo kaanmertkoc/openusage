@@ -89,6 +89,8 @@ enum DevinUsageMapper {
         return Date(timeIntervalSince1970: seconds)
     }
 
+    /// An overage balance as a currency string; `nil` only when the field is missing or non-numeric
+    /// (truly no data). A present balance of zero renders "$0.00" — a real, measured zero — not "No data".
     private static func formatDollarsFromMicros(_ value: Any?) -> String? {
         guard var micros = ProviderParse.number(value) else { return nil }
         micros = max(0, micros)

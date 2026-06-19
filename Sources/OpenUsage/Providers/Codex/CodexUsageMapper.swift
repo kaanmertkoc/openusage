@@ -174,7 +174,8 @@ enum CodexUsageMapper {
     }
 
     /// Codex flex credits as raw values: the dollar value (remaining × 4¢) then the credit count, shown
-    /// combined as "$32.84 · 821 credits". Negative balances clamp to zero.
+    /// combined as "$32.84 · 821 credits". Negative balances clamp to zero, so an exhausted balance reads
+    /// "$0.00 · 0 credits" — a real, measured zero, not "No data".
     static func creditValues(remaining: Double) -> [MetricValue] {
         let credits = max(0, Int(remaining.rounded(.down)))
         let usd = Double(credits) * creditUSDRate

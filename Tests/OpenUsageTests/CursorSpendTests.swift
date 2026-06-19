@@ -117,21 +117,22 @@ final class CursorSpendRangeTests: XCTestCase {
         CursorUsageMapper.appendSpendLines(rows: rows, now: now, to: &lines)
 
         // Combined cost + tokens, server-priced so no ⓘ (estimated: false).
-        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1.00, kind: .dollars), MetricValue(number: 100, kind: .count)])
-        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 2.00, kind: .dollars), MetricValue(number: 200, kind: .count)])
+        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1.00, kind: .dollars), MetricValue(number: 100, kind: .count, label: "tokens")])
+        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 2.00, kind: .dollars), MetricValue(number: 200, kind: .count, label: "tokens")])
         // Last 30 Days sums every fetched day (the provider scopes the CSV to a 30-day window).
-        XCTAssertEqual(values(lines, "Last 30 Days"), [MetricValue(number: 8.50, kind: .dollars), MetricValue(number: 1349, kind: .count)])
+        XCTAssertEqual(values(lines, "Last 30 Days"), [MetricValue(number: 8.50, kind: .dollars), MetricValue(number: 1349, kind: .count, label: "tokens")])
     }
 
-    func testZeroActivityLeavesTodayYesterdayAtZeroTokensAndDropsLast30() {
+    func testZeroActivityReadsZeroDollarsAndTokens() {
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: [], now: Date(), to: &lines)
 
-        // No rows: Today/Yesterday read as a measured zero (count only), matching the shared mapper;
-        // Last 30 Days is dropped entirely (no tokens) and falls back to "No data".
-        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 0, kind: .count)])
-        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 0, kind: .count)])
-        XCTAssertNil(values(lines, "Last 30 Days"))
+        // The export fetched but had no rows: a real, measured zero, so every tile reads "$0.00 · 0
+        // tokens" — not "0" and not "No data" (that's reserved for a failed export; see the provider test).
+        let zero = [MetricValue(number: 0, kind: .dollars), MetricValue(number: 0, kind: .count, label: "tokens")]
+        XCTAssertEqual(values(lines, "Today"), zero)
+        XCTAssertEqual(values(lines, "Yesterday"), zero)
+        XCTAssertEqual(values(lines, "Last 30 Days"), zero)
     }
 
     private func makeRow(date: Date, cost: Double, tokens: Int) -> CursorUsageCSVRow {
@@ -217,9 +218,11 @@ final class CursorSpendProviderTests: XCTestCase {
         let cursor = CursorProvider()
         let descriptor = try! XCTUnwrap(cursor.widgetDescriptors.first { $0.id == "cursor.today" })
 
+        // The combined tile joins the dollar and the labeled token count. A no-usage day is a real zero,
+        // so it reads "$0.00 · 0 tokens" (not "No data" — that's only for a failed export).
         let cases: [(Double, Int, String, String)] = [
-            (12.34, 891_000, "$12.34", "$12.34 · 891K"),
-            (0.0, 0, "$0.00", "$0.00 · 0")
+            (12.34, 891_000, "$12.34", "$12.34 · 891K tokens"),
+            (0.0, 0, "$0.00", "$0.00 · 0 tokens")
         ]
         for (dollars, tokens, expectedValue, expectedDetail) in cases {
             let runtime = TestProviderRuntime(
@@ -230,7 +233,7 @@ final class CursorSpendProviderTests: XCTestCase {
                     displayName: cursor.provider.displayName,
                     lines: [.values(label: "Today", values: [
                         MetricValue(number: dollars, kind: .dollars),
-                        MetricValue(number: Double(tokens), kind: .count)
+                        MetricValue(number: Double(tokens), kind: .count, label: "tokens")
                     ])]
                 )
             )

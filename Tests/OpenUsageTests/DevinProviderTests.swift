@@ -63,6 +63,19 @@ final class DevinUsageMapperTests: XCTestCase {
         XCTAssertNotNil(progress(mapped.lines, "Weekly quota")?.resetsAt)
     }
 
+    func testZeroOverageBalanceReadsZeroDollarsNotNoData() throws {
+        var userStatus = makeUserStatus()
+        var planStatus = userStatus["planStatus"] as! [String: Any]
+        planStatus["overageBalanceMicros"] = "0"
+        userStatus["planStatus"] = planStatus
+
+        let mapped = try DevinUsageMapper.mapUserStatus(userStatus)
+
+        // A present balance of zero is a real, measured value → "$0.00", not "No data" (that's reserved
+        // for the field being absent entirely).
+        XCTAssertEqual(text(mapped.lines, "Extra usage balance"), "$0.00")
+    }
+
     func testUsesHiddenDailyQuotaAsWeeklyUsageWhenWeeklyIsAbsent() throws {
         var userStatus = makeUserStatus()
         var planStatus = userStatus["planStatus"] as! [String: Any]

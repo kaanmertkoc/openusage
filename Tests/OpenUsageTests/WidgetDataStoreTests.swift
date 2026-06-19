@@ -232,6 +232,7 @@ final class WidgetDataStoreTests: XCTestCase {
         var data = WidgetData(title: "Extra Usage", icon: .providerMark("codex"), kind: .dollars, used: 0, limit: nil)
         data.values = CodexUsageMapper.creditValues(remaining: 820.9)
         XCTAssertEqual(data.unboundedDetail, "$32.80 · 820 credits")
+        // An exhausted/negative balance clamps to a real, measured zero — "$0.00 · 0 credits", not "No data".
         data.values = CodexUsageMapper.creditValues(remaining: -5)
         XCTAssertEqual(data.unboundedDetail, "$0.00 · 0 credits")
     }
@@ -273,9 +274,10 @@ final class WidgetDataStoreTests: XCTestCase {
                 lines: [
                     .values(label: "Last 30 Days", values: [
                         MetricValue(number: 478.0, kind: .dollars, estimated: true),
-                        MetricValue(number: 891_000, kind: .count)
+                        MetricValue(number: 891_000, kind: .count, label: "tokens")
                     ]),
-                    .values(label: "Today", values: [MetricValue(number: 0, kind: .count)])
+                    // An unpriced day: real tokens, no dollar (cost unknown, not zero).
+                    .values(label: "Today", values: [MetricValue(number: 123_000, kind: .count, label: "tokens")])
                 ]
             )
         )
@@ -295,22 +297,22 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(costData.unboundedDetail, "$478.00 spent")
         XCTAssertEqual(costData.infoNote, WidgetData.ccusageEstimateNote)
 
-        // Tokens-only: the measured count, abbreviated and unlabeled, no ⓘ; the tooltip has every digit.
+        // Tokens-only: the measured count with its "tokens" unit, no ⓘ; the tooltip has every digit.
         let tokenData = store.data(for: tokens)
-        XCTAssertEqual(tokenData.unboundedDetail, "891K")
-        XCTAssertEqual(tokenData.menuBarValue, "891K")
-        XCTAssertEqual(tokenData.unboundedTooltip, "891,000")
+        XCTAssertEqual(tokenData.unboundedDetail, "891K tokens")
+        XCTAssertEqual(tokenData.menuBarValue, "891K tokens")
+        XCTAssertEqual(tokenData.unboundedTooltip, "891,000 tokens")
         XCTAssertNil(tokenData.infoNote)
 
         // Combined: both values joined; the tray glances at the leading dollar value, the tooltip is full.
         let combinedData = store.data(for: combined)
-        XCTAssertEqual(combinedData.unboundedDetail, "$478.00 · 891K")
+        XCTAssertEqual(combinedData.unboundedDetail, "$478.00 · 891K tokens")
         XCTAssertEqual(combinedData.menuBarValue, "$478")
-        XCTAssertEqual(combinedData.unboundedTooltip, "$478.00 · 891,000")
+        XCTAssertEqual(combinedData.unboundedTooltip, "$478.00 · 891,000 tokens")
         XCTAssertEqual(combinedData.infoNote, WidgetData.ccusageEstimateNote)
 
-        // A day with tokens but no priced cost: the cost-only tile finds no dollar value, so it reads
-        // "No data" rather than a misleading $0.00.
+        // An unpriced day (real tokens, no dollar): the cost-only tile finds no dollar value, so it reads
+        // "No data" rather than a fabricated $0.00.
         let todayData = store.data(for: todayCost)
         XCTAssertFalse(todayData.hasData)
         XCTAssertEqual(todayData.valueText, WidgetData.noDataHeadline)

@@ -81,11 +81,45 @@ final class CodexUsageMapperTests: XCTestCase {
 
         XCTAssertEqual(values(lines, "Today"),
                        [MetricValue(number: 0.75, kind: .dollars, estimated: true),
-                        MetricValue(number: 150, kind: .count)])
-        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 0, kind: .count)])
+                        MetricValue(number: 150, kind: .count, label: "tokens")])
+        // No usage yesterday is a real, measured zero → "$0.00 · 0 tokens", not "0" and not "No data".
+        XCTAssertEqual(values(lines, "Yesterday"),
+                       [MetricValue(number: 0, kind: .dollars, estimated: true),
+                        MetricValue(number: 0, kind: .count, label: "tokens")])
         XCTAssertEqual(values(lines, "Last 30 Days"),
                        [MetricValue(number: 1.75, kind: .dollars, estimated: true),
-                        MetricValue(number: 450, kind: .count)])
+                        MetricValue(number: 450, kind: .count, label: "tokens")])
+    }
+
+    func testZeroUsageReadsZeroDollarsAndTokensNotNoData() {
+        // The reported Grok "Today 0": a period with no usage is a measured zero, so every tile reads
+        // "$0.00 · 0 tokens" — never a bare "0", and never "No data" (that's only for an unreadable
+        // source). Fixed once in SpendTileMapper, so it holds for every provider that funnels through it.
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            CcusageDailyUsage(daily: [CcusageDay(date: "2026-02-19", totalTokens: 0, costUSD: nil)]),
+            to: &lines,
+            now: makeDate("2026-02-20T16:00:00.000Z")
+        )
+
+        let zero = [MetricValue(number: 0, kind: .dollars, estimated: true),
+                    MetricValue(number: 0, kind: .count, label: "tokens")]
+        XCTAssertEqual(values(lines, "Today"), zero)
+        XCTAssertEqual(values(lines, "Yesterday"), zero)
+        XCTAssertEqual(values(lines, "Last 30 Days"), zero)
+    }
+
+    func testUnpricedTokensShowTokensWithoutAFabricatedZeroDollar() {
+        // A day with real tokens the runner couldn't price omits the dollar — its cost is unknown, not
+        // zero — so the row shows just the labeled token count rather than a misleading "$0.00 ·".
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            CcusageDailyUsage(daily: [CcusageDay(date: "2026-02-20", totalTokens: 1_200_000, costUSD: nil)]),
+            to: &lines,
+            now: makeDate("2026-02-20T16:00:00.000Z")
+        )
+
+        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1_200_000, kind: .count, label: "tokens")])
     }
 
     // Regression: dollar amounts must group thousands (e.g. "$1,200.00") consistently with the
@@ -194,7 +228,7 @@ final class CodexProviderTests: XCTestCase {
         // lines, leaving a contradictory badge-plus-spend snapshot.
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 0.25, kind: .dollars, estimated: true),
-                        MetricValue(number: 150, kind: .count)])
+                        MetricValue(number: 150, kind: .count, label: "tokens")])
         XCTAssertFalse(snapshot.lines.contains { line in
             if case .badge(_, let value, _, _) = line { return value == "No usage data" }
             return false

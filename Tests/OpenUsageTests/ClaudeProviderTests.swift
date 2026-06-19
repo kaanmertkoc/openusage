@@ -173,7 +173,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNotNil(snapshot.lines.first(where: { $0.label == "Session" }))
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 0.25, kind: .dollars, estimated: true),
-                        MetricValue(number: 150, kind: .count)])
+                        MetricValue(number: 150, kind: .count, label: "tokens")])
         XCTAssertEqual(processRunner.lastCcusageEnvironment?["CLAUDE_CONFIG_DIR"], "/tmp/claude")
         XCTAssertTrue(httpClient.requests.contains { $0.url.absoluteString == "https://api.anthropic.com/api/oauth/usage" })
     }

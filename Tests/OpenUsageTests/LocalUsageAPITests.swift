@@ -18,7 +18,7 @@ final class LocalUsageAPITests: XCTestCase {
                           periodDurationMs: 18_000_000),
                 .values(label: "Today", values: [
                     MetricValue(number: 5.17, kind: .dollars),
-                    MetricValue(number: 9_200_000, kind: .count)
+                    MetricValue(number: 9_200_000, kind: .count, label: "tokens")
                 ])
             ],
             refreshedAt: refreshedAt
@@ -65,7 +65,7 @@ final class LocalUsageAPITests: XCTestCase {
         XCTAssertTrue(progress.keys.contains("color"))        // explicit null, like the original
 
         let text = try XCTUnwrap(lines.first { $0["type"] as? String == "text" })
-        XCTAssertEqual(text["value"] as? String, "$5.17 · 9.2M")
+        XCTAssertEqual(text["value"] as? String, "$5.17 · 9.2M tokens")
         XCTAssertTrue(text.keys.contains("subtitle"))
     }
 
