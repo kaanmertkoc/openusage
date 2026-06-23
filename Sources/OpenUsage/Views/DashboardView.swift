@@ -39,7 +39,7 @@ struct DashboardView: View {
     /// Readability control. The app toggle is OR'd with macOS's own Reduce Transparency setting
     /// (`accessibilityReduceTransparency`) into one `effectiveReduceTransparency` flag, pushed down
     /// the tree so every surface renders in its solid form together.
-    @AppStorage(ReduceTransparencySetting.key) private var reduceTransparency = false
+    @AppStorage(ReduceTransparencySetting.key) private var reduceTransparency = true
     @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
 
     private static let outerPadding: CGFloat = 14

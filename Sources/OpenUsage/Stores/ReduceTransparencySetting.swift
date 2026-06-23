@@ -1,9 +1,10 @@
 import Foundation
 
-/// Opt-in switch that drops the popover's Liquid Glass for a solid, higher-contrast surface — the
-/// fix for "I can't read it over a busy desktop" without taking glass away from everyone (it's off
-/// by default). Stored as a plain `Bool` under one `UserDefaults.standard` key, so it doesn't need
-/// the `UserDefaultsBacked` enum machinery; this namespace just holds the key and a live reader.
+/// Switch that drops the popover's Liquid Glass for a solid, higher-contrast surface — the fix for
+/// "I can't read it over a busy desktop". It's *on* by default for readability; users who prefer
+/// glass can turn it off in Settings. Stored as a plain `Bool` under one `UserDefaults.standard`
+/// key, so it doesn't need the `UserDefaultsBacked` enum machinery; this namespace just holds the
+/// key and a live reader.
 ///
 /// The app toggle is OR'd with macOS's own *Reduce Transparency* accessibility setting at the view
 /// layer (`DashboardView`), so a user who has the system setting on gets the solid surface even if
@@ -19,9 +20,11 @@ enum ReduceTransparencySetting {
     /// observed separately, via `NSWorkspace`.)
     static let didChangeNotification = Notification.Name("ReduceTransparencySettingDidChange")
 
-    /// The stored choice, read live from `UserDefaults.standard` (defaults to `false` when unset —
-    /// a missing bool key reads as `false`, which is exactly the "glass on" default we want).
+    /// The stored choice, read live from `UserDefaults.standard`. Defaults to `true` when unset
+    /// (fresh installs and existing users who never touched the toggle get the solid surface); an
+    /// explicit choice is preserved because the key then reads back as a non-nil object. The
+    /// `@AppStorage` sites that mirror this key default to `true` for the same reason.
     static var current: Bool {
-        UserDefaults.standard.bool(forKey: key)
+        UserDefaults.standard.object(forKey: key) as? Bool ?? true
     }
 }

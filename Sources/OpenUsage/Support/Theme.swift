@@ -124,9 +124,9 @@ private struct GlassTint: ShapeStyle {
     }
 }
 
-/// Backs `cardSurface`. With Reduce Transparency *off* (the default) live cards keep the original
-/// look exactly: the translucent quaternary fill and no border, so the toggle-off appearance is
-/// unchanged from before this setting existed. With it *on*, cards take the frosted fill plus the
+/// Backs `cardSurface`. With Reduce Transparency *off* live cards keep the original glass look: the
+/// translucent quaternary fill and no border, so the toggle-off appearance is unchanged from before
+/// this setting existed. With it *on* (the default), cards take the frosted fill plus the
 /// hairline border so they stay distinct over the now-opaque popover (the border is what carries
 /// that separation in dark mode). The lifted drag preview always uses its own legible material and
 /// no border. A `ViewModifier` rather than a plain `View` func so it can read the environment flag.
