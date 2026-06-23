@@ -2,8 +2,9 @@ import XCTest
 @testable import OpenUsage
 
 /// Covers the refresh cadence as the single source of truth: `RefreshSetting`'s fixed interval, and the
-/// snapshot cache treating a snapshot as fresh for exactly one interval (so cached data survives a
-/// relaunch within the interval and is refetched once past it).
+/// snapshot cache's session-scoped freshness — a snapshot is fresh for one interval only *within the
+/// session that fetched it*, so a relaunch always refetches on the first pass (it still paints the cached
+/// value instantly) while a within-session pass is served from cache until the interval elapses. See #697.
 @MainActor
 final class RefreshSettingTests: XCTestCase {
     // MARK: - Fixed cadence
@@ -13,20 +14,53 @@ final class RefreshSettingTests: XCTestCase {
         XCTAssertEqual(RefreshSetting.interval, 300)
     }
 
-    // MARK: - Cache TTL tied to the interval
+    // MARK: - Session-scoped freshness
 
-    func testCacheReusedAcrossRestartWithinInterval() async {
+    func testRelaunchRefetchesEvenWithinIntervalButPaintsCachedValueFirst() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let suite = makeDefaults("restart-within")
 
         // A prior session left a snapshot 4 minutes ago — inside the 5-minute interval.
         storeSnapshot(used: 20, age: 240, into: suite, now: now)
 
+        // A fresh store/cache (= relaunch) loads it from disk for instant paint…
         let runtime = makeRuntime(used: 80)
         let store = makeStore(runtime: runtime, suite: suite, now: now)
+        XCTAssertEqual(store.snapshots["test"]?.line(label: "Session"),
+                       .progress(label: "Session", used: 20, limit: 100, format: .percent))
+
+        // …but a disk-loaded snapshot never gates the refresh, so the first pass refetches (#697) even
+        // though the snapshot is still within the interval.
+        await store.refreshAll()
+        XCTAssertEqual(runtime.refreshCount, 1)
+        XCTAssertEqual(store.snapshots["test"]?.line(label: "Session"),
+                       .progress(label: "Session", used: 80, limit: 100, format: .percent))
+    }
+
+    func testWithinSessionPassServedFromCacheUntilInterval() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let suite = makeDefaults("within-session")
+
+        // One cache instance shared between the seeding write and the store models a single running
+        // session: the snapshot was fetched 4 minutes ago *this* session, so it short-circuits the pass.
+        let cache = ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", now: { now })
+        cache.store(ProviderSnapshot(
+            providerID: "test",
+            displayName: "Test",
+            lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
+            refreshedAt: now.addingTimeInterval(-240)
+        ))
+
+        let runtime = makeRuntime(used: 80)
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors),
+            providers: [runtime],
+            cache: cache,
+            defaults: suite
+        )
         await store.refreshAll()
 
-        XCTAssertEqual(runtime.refreshCount, 0) // within interval => served from cache, no fetch
+        XCTAssertEqual(runtime.refreshCount, 0) // fetched this session, within interval => no refetch
         XCTAssertNotNil(store.snapshots["test"])
     }
 
