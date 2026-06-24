@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.7.0-beta.13
+
+> Heads up: while OpenUsage is in Early Access, updating to a new beta resets all settings — layout, pins, preferences, and the menu-bar shortcut — back to defaults. Betas ship no settings migrations, so each one starts from a clean slate.
+
+### New Features
+- Reset all settings to defaults on every beta update (no migrations during Early Access) by @robinebers
+- Liquid Glass split button in the footer ([#722](https://github.com/robinebers/openusage/pull/722)) by @robinebers
+- Add expandable dashboard metrics by @robinebers
+- Show "Not started" for unused Codex/Claude sessions; simplify pace ticks ([#719](https://github.com/robinebers/openusage/pull/719)) by @robinebers
+- Make the menu-bar panel user-resizable ([#717](https://github.com/robinebers/openusage/pull/717)) by @robinebers
+- Remove the Reduce Transparency setting; the popover keeps its Liquid Glass surface ([#718](https://github.com/robinebers/openusage/pull/718)) by @robinebers
+
+### Bug Fixes
+- Render tooltips above the popover and wrap long text ([#715](https://github.com/robinebers/openusage/pull/715)) by @davidarny
+- Fail loudly on malformed custom OAuth URL instead of crashing ([#700](https://github.com/robinebers/openusage/pull/700)) by @robinebers
+- Try all Claude credential sources with fallback on auth failure ([#694](https://github.com/robinebers/openusage/pull/694)) by @robinebers
+- Restrict Usage Trend hover to the mini chart, not the label ([#716](https://github.com/robinebers/openusage/pull/716)) by @robinebers
+- Fix pace marker placement: true even-pace line in both views ([#714](https://github.com/robinebers/openusage/pull/714)) by @robinebers
+- Refine row/provider right-click menus + footer pull-down button ([#713](https://github.com/robinebers/openusage/pull/713)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.0-beta.12...v0.7.0-beta.13](https://github.com/robinebers/openusage/compare/v0.7.0-beta.12...v0.7.0-beta.13)
+
+- [2d47fb4](https://github.com/robinebers/openusage/commit/2d47fb4164ee9b0559d4f5f6f631cd8bbe257f18) feat(settings): reset all settings on beta version changes by @robinebers
+- [a234aeb](https://github.com/robinebers/openusage/commit/a234aeb8bac97df99f3f9c025e280a45a6ff3f61) fix(popover): restore translucent footer with behind-window glass by @robinebers
+- [730ffa7](https://github.com/robinebers/openusage/commit/730ffa7d0435675edd63695fc4ebc026b3f7824b) feat(popover): Liquid Glass split button in the footer (#722) by @robinebers
+- [d93a745](https://github.com/robinebers/openusage/commit/d93a7451ebd05164eb79c8229aaec6d3ddfd9a44) Add expandable dashboard metrics by @robinebers
+- [1c13b7d](https://github.com/robinebers/openusage/commit/1c13b7de01ff9b5394a29fe1804be6a42b39bd08) feat(pacing): show "Not started" for unused Codex/Claude sessions; simplify pace ticks (#719) by @robinebers
+- [6faaf25](https://github.com/robinebers/openusage/commit/6faaf252379751423f68b378fa9379ad9b0eb64c) feat(popover): solid opaque surface; drop Reduce Transparency toggle (#718) by @robinebers
+- [4aca0ba](https://github.com/robinebers/openusage/commit/4aca0ba83b83a39c7c17f1f52a3bd10e5dce040a) fix(tooltip): render above popover and wrap long text (#715) by @davidarny
+- [11d673a](https://github.com/robinebers/openusage/commit/11d673a6f859840d1f96e83f67ca76443eb5f567) fix(claude): fail loudly on malformed custom OAuth URL instead of crashing (#700) by @robinebers
+- [39ad9f3](https://github.com/robinebers/openusage/commit/39ad9f32a1d39846c3c735874921ccedd1d98855) fix(claude): try all credential sources with fallback on auth failure (#687) (#694) by @robinebers
+- [cf8ee7b](https://github.com/robinebers/openusage/commit/cf8ee7b2f6ef39ebaec06c7898b64ffdca7b3415) Restrict usage trend hover to the mini chart, not the label (#716) by @robinebers
+- [336821d](https://github.com/robinebers/openusage/commit/336821d0e26841c3d9b69f704671f65b9782767b) feat(popover): make the menu-bar panel user-resizable (#717) by @robinebers
+- [dea1d2d](https://github.com/robinebers/openusage/commit/dea1d2d76ffbd093e1380d9b1f39623abcac334b) Fix pace marker placement: true even-pace line in both views (#714) by @robinebers
+- [7937806](https://github.com/robinebers/openusage/commit/79378065afab901700a202799462330621efdf48) Refine row/provider right-click menus + footer pull-down button (#713) by @robinebers
+
 ## v0.7.0-beta.12
 
 ### New Features
