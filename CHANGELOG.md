@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.7.0
+
+**A brand-new OpenUsage.** The app has been rebuilt from the ground up to be faster, lighter, and feel right at home on your Mac.
+
+> **Coming from an earlier version?** This is a fresh start. Your usage and sign-ins are still read straight from your machine — but the app and its look are all new.
+
+### Highlights
+
+- **Rebuilt for Mac** — quicker to open, lighter to run, and a clean, modern look. Runs on macOS Sequoia and later, on both Apple Silicon and Intel Macs.
+- **More providers** — Claude, Codex, Cursor, Grok, Devin, and Antigravity, all in one place.
+- **Usage trends** — a quick sparkline of recent usage for Claude, Codex, Cursor, and Grok.
+- **Pacing** — see whether you're ahead or behind, with a "Limit in 3h 45m" estimate and an optional always-on view.
+- **Clearer spend** — cost and tokens shown side by side, with a clean "$0.00 · 0 tokens" when there's nothing to show yet.
+- **Codex limit resets** — see when your limits refresh, right in the menu bar and popover.
+- **Make it yours** — resize the panel, expand extra metrics, reorder providers, pin your favorites to the menu bar, and right-click for quick actions.
+- **Private by default** — optional, anonymous usage and crash reporting you can turn off anytime.
+
+### New in this release
+
+- **Your settings now stick** — updating no longer resets your layout, pins, and preferences.
+- **More reliable Claude sign-in** — steadier connection and clearer messages when something needs attention.
+- **Cursor** — spend is temporarily hidden while Cursor's own usage data is delayed, so you don't see misleading numbers.
+- Smaller fixes and polish throughout.
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.28...v0.7.0](https://github.com/robinebers/openusage/compare/v0.6.28...v0.7.0)
+
+Thanks to @robinebers, @davidarny, and @validatedev.
+
 ## v0.7.0-beta.16
 
 ### New Features
