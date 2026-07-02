@@ -22,7 +22,10 @@ Next number in the current lane (default bump: patch). Beta builds add a `-beta.
 
 ### 2. Generate the changelog
 
-Collect commits since the previous tag and categorize each:
+Collect commits since the **previous release in the same channel** and categorize each:
+
+- **Stable cut:** span from the **last stable tag** to this one (e.g. `v0.7.0...v0.7.1`), so the notes roll up the entire beta series plus any post-beta commits. Never start a stable changelog at the last beta — that would omit every beta in the lane.
+- **Beta cut:** span from the previous tag (the prior beta, or the last stable if it's the first beta in a lane) to this one.
 
 | Commit prefix | Category |
 |---|---|
@@ -121,9 +124,12 @@ Only include category sections that have entries.
 - [{short_hash}](https://github.com/robinebers/openusage/commit/{full_hash}) {commit message} by @{author}
 ~~~
 
+`{prev_tag}` is the previous release **in the same channel**: last stable for a stable cut, last beta (or last stable for the first beta in a lane) for a beta cut.
+
 ## Rules
 
 - 7-char short commit hashes; tags always prefixed with `v`.
+- Stable changelogs span last-stable → this-stable (roll up the whole beta series); beta changelogs span previous-tag → this-beta.
 - Never push or tag automatically — ask the owner first.
 - Always publish notes to the GitHub Release — never blank.
 - The version is the tag; never edit version files.
