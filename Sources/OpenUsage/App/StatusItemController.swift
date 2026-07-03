@@ -120,6 +120,10 @@ final class StatusItemController: NSObject {
         MenuBarPopover.dismissHandler = { [weak self] in
             self?.hidePanel()
         }
+        MenuBarPopover.showHandler = { [weak self] in
+            self?.container.layout.screen = .dashboard
+            self?.showPopover()
+        }
 
         // The panel auto-fits its content: SwiftUI owns one animated height (the single animation
         // clock) and the panel just follows it. `applyHeight` is the per-frame follower; `clampHeight`
@@ -336,6 +340,17 @@ final class StatusItemController: NSObject {
         } else {
             showPanel()
         }
+    }
+
+    /// Opens the dashboard panel without toggling it shut when already visible — used when an external
+    /// trigger (a tapped pace notification) should surface the popover.
+    func showPopover() {
+        if panel.isVisible {
+            panel.makeKeyAndOrderFront(nil)
+            statusItem.button?.highlight(true)
+            return
+        }
+        showPanel()
     }
 
     private func showPanel() {

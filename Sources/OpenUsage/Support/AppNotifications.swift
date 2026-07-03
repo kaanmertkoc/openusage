@@ -153,4 +153,23 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     ) {
         completionHandler([.banner, .sound])
     }
+
+    /// Tapping a pace alert opens the menu-bar popover so the user lands on the dashboard.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              response.notification.request.content.threadIdentifier == "openusage"
+        else {
+            completionHandler()
+            return
+        }
+        Task { @MainActor in
+            AppLog.info(.notifications, "notification tapped; opening popover")
+            MenuBarPopover.show()
+        }
+        completionHandler()
+    }
 }
