@@ -563,10 +563,8 @@ final class ClaudeProviderTests: XCTestCase {
                     keychain: FakeKeychain()
                 ),
                 usageClient: ClaudeUsageClient(httpClient: FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))),
-                ccusageRunner: CcusageRunner(
-                    processRunner: FakeProcessRunner(),
-                    homeDirectory: { URL(fileURLWithPath: "/Users/test") }
-                )
+                logUsageScanner: ClaudeLogFixture.scanner(home: nil),
+                pricing: { TestPricing.bundled }
             )
         }
 
