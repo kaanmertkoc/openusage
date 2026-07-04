@@ -147,7 +147,7 @@ final class ClaudeProvider: ProviderRuntime {
             )
             SpendTileMapper.appendUsageTrend(
                 scan.series, to: &mapped.lines, now: now(),
-                note: "Estimated from local logs at API rates"
+                note: "From your Claude usage history (estimated)"
             )
         }
 

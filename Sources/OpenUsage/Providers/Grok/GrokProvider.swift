@@ -95,7 +95,7 @@ final class GrokProvider: ProviderRuntime {
                 modelSourceNote: "From your Grok logs (estimated)"
             )
             SpendTileMapper.appendUsageTrend(scan.series, to: &mapped.lines, now: now(),
-                                             note: "Estimated from local logs at API rates")
+                                             note: "From your Grok logs (estimated)")
         }
 
         return ProviderSnapshot.make(provider: provider, plan: plan, lines: mapped.lines, refreshedAt: now())

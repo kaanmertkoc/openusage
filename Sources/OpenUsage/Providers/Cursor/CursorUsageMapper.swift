@@ -286,7 +286,7 @@ enum CursorUsageMapper {
         // Cursor's tokens come from the server-priced usage CSV, not a local CLI log, so the trend
         // note names that source rather than the "estimated from local logs" line the log-scanning
         // providers use. Tokens are measured either way.
-        SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage history")
+        SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage export")
     }
 
     private static func dayKey(from date: Date, calendar: Calendar) -> String {

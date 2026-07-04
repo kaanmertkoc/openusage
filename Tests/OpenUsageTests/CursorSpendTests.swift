@@ -104,7 +104,7 @@ final class CursorSpendRangeTests: XCTestCase {
         }
         XCTAssertEqual(label, "Usage Trend")
         // Cursor's tokens come from the server-priced CSV, so the note names that source, not local logs.
-        XCTAssertEqual(note, "From your Cursor usage history")
+        XCTAssertEqual(note, "From your Cursor usage export")
         XCTAssertEqual(points.count, 31, "one bar per calendar day across the 31-day window")
         XCTAssertEqual(points.last?.value, 100, "today's tokens land on the last bar")
         XCTAssertEqual(points[29].value, 200, "yesterday's tokens land on the second-to-last bar")
