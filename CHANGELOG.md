@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.7.3-beta.5
+
+### New Features
+- Include Cowork session logs in the Claude local spend tiles ([#845](https://github.com/robinebers/openusage/pull/845)) by @robinebers
+
+### Chores
+- Update skills' Pages stall guidance for the Actions-based deploy by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.3-beta.4...v0.7.3-beta.5](https://github.com/robinebers/openusage/compare/v0.7.3-beta.4...v0.7.3-beta.5)
+
+- [daccf05](https://github.com/robinebers/openusage/commit/daccf05a3d048e8fa4e9db0c2f96eff56f823f1d) feat(claude): include Cowork session logs in the local spend tiles (#845) by @robinebers
+- [2366bb3](https://github.com/robinebers/openusage/commit/2366bb3cd8d81d4f6efebb87925c935fc7b61a84) docs(skills): update Pages stall guidance for the Actions-based deploy by @robinebers
+
 ## v0.7.3-beta.4
 
 ### Bug Fixes
