@@ -19,6 +19,8 @@ This check happens **once per provider**. After that, the provider is yours to m
 
 Everything you set in Customize — providers on or off, metric layout, menu-bar stars — carries across updates untouched. The only thing an update may ever change is turning **on** a provider you have never seen before, and only when you actually have that tool installed.
 
+The one exception is deliberate: the **Reset All Customization** button at the top of the Customize provider list. Because you asked for a clean slate, it re-runs the same installed-tool detection as first launch and switches the enabled set back to exactly the tools set up on your Mac (Claude/Codex/Cursor if none are found) — so it can turn a provider off even if you had it on, or back on if you had turned it off. It also asks for confirmation first. See [Dashboard](dashboard.md) for the metric side of that reset.
+
 ## How it works (for the curious)
 
 The app persists three small lists in its settings:

@@ -95,6 +95,53 @@ final class FirstRunSeederTests: XCTestCase {
         XCTAssertEqual(enablement.enabledIDs, ["claude", "cursor"])
     }
 
+    // MARK: - Reset All reseed
+
+    func testReseedOverwritesCurrentChoicesWithDetectedSet() async {
+        // The user had a hand-tuned set on; Reset All must re-detect and switch to exactly what's
+        // installed — even turning off a provider they had enabled that has no local credentials.
+        let enablement = ProviderEnablementStore(defaults: makeDefaults("reseed"))
+        enablement.seedEnabledProviders(["codex", "grok"])
+        let providers = [
+            stub("claude", hasCredentials: true),
+            stub("codex", hasCredentials: false),
+            stub("cursor", hasCredentials: false),
+            stub("grok", hasCredentials: true)
+        ]
+
+        let task = FirstRunSeeder.reseed(providers: providers, enablement: enablement)
+
+        // Snaps to the fallback synchronously so the dashboard reflects the reset immediately.
+        XCTAssertEqual(enablement.enabledIDs, ["claude", "codex", "cursor"])
+
+        await task.value
+        XCTAssertEqual(enablement.enabledIDs, ["claude", "grok"])
+    }
+
+    func testReseedKeepsFallbackWhenNothingDetected() async {
+        let enablement = ProviderEnablementStore(defaults: makeDefaults("reseed-none"))
+        enablement.seedEnabledProviders(["grok"])
+        let providers = ["claude", "codex", "cursor", "grok"].map { stub($0, hasCredentials: false) }
+
+        let task = FirstRunSeeder.reseed(providers: providers, enablement: enablement)
+        await task.value
+
+        XCTAssertEqual(enablement.enabledIDs, ["claude", "codex", "cursor"])
+    }
+
+    func testReseedUserToggleDuringDetectionWins() async {
+        let enablement = ProviderEnablementStore(defaults: makeDefaults("reseed-toggle"))
+        let providers = [stub("claude", hasCredentials: true), stub("codex", hasCredentials: false),
+                         stub("cursor", hasCredentials: false), stub("devin", hasCredentials: true)]
+
+        let task = FirstRunSeeder.reseed(providers: providers, enablement: enablement)
+        // The user flips a toggle while the probe is still running: their arrangement must survive.
+        enablement.setEnabled(false, for: "codex")
+        await task.value
+
+        XCTAssertEqual(enablement.enabledIDs, ["claude", "cursor"])
+    }
+
     // MARK: - OnboardingStore persistence
 
     func testCustomizeHintFlagPersistsAcrossInstances() {

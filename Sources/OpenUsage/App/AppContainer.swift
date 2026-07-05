@@ -29,6 +29,9 @@ final class AppContainer {
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
+    /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
+    /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
+    private let providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
@@ -97,6 +100,7 @@ final class AppContainer {
             providers: providers,
             enablement: enablement
         )
+        self.providers = providers
         self.onboarding = onboarding
         self.registry = registry
         self.enablement = enablement
@@ -154,6 +158,14 @@ final class AppContainer {
         refreshTask.cancel()
         seedTask?.cancel()
         newProviderTask?.cancel()
+    }
+
+    /// Re-runs first-launch credential detection on demand — the enablement half of the Customize
+    /// "Reset All" action (`LayoutStore.resetToDefault` handles metrics, order, pins, and expansion).
+    /// Delegates to `FirstRunSeeder.reseed`; returns its detection task so callers can await it.
+    @discardableResult
+    func reseedEnabledProviders() -> Task<Void, Never> {
+        FirstRunSeeder.reseed(providers: providers, enablement: enablement)
     }
 
     /// Drives live updates: refresh on launch, then again every refresh interval. Each pass honors the

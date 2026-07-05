@@ -415,11 +415,14 @@ struct DashboardView: View {
                 }
                 .alert("Reset All Customization?", isPresented: $isPresentingResetAllConfirm) {
                     Button("Reset All", role: .destructive) {
-                        withAnimation(Motion.spring) { layout.resetToDefault() }
+                        withAnimation(Motion.spring) {
+                            layout.resetToDefault()
+                            container.reseedEnabledProviders()
+                        }
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Resets every provider, their metrics and the order. Are you sure?")
+                    Text("Turns providers back on for the tools you have installed and resets every provider's metrics and order. Are you sure?")
                 }
             }
         case .settings:

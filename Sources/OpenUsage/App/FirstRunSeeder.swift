@@ -37,14 +37,46 @@ enum FirstRunSeeder {
         AppLog.info(.config, "first run: seeded providers \(fallback.sorted()); probing local credentials")
 
         return Task {
-            var detected = Set<String>()
-            for provider in providers where await provider.hasLocalCredentials() {
-                detected.insert(provider.provider.id)
-            }
+            let detected = await detectLocalProviders(providers)
             AppLog.info(.config, "first run: detected credentials for \(detected.sorted())")
             // The probe takes a moment; a toggle the user flipped meanwhile wins over detection.
             guard enablement.enabledIDs == fallback, !detected.isEmpty else { return }
             enablement.seedEnabledProviders(detected)
         }
+    }
+
+    /// Re-runs first-launch detection on demand for the Customize "Reset All" action. Unlike first-run
+    /// and update-time seeding, this is a deliberate user reset, so it *does* overwrite the current
+    /// on/off choices: it snaps the enabled set to the Claude/Codex/Cursor fallback synchronously (so the
+    /// dashboard reflects the reset without waiting on the probe), then replaces it with exactly the
+    /// providers detected on this machine once the local credential probe finishes — keeping the fallback
+    /// when nothing is detected. A toggle the user flips during the (brief, local-only) probe still wins.
+    /// Returns the detection task so tests and callers can await it.
+    @discardableResult
+    static func reseed(
+        providers: [ProviderRuntime],
+        enablement: ProviderEnablementStore
+    ) -> Task<Void, Never> {
+        let known = Set(providers.map(\.provider.id))
+        let fallback = fallbackProviderIDs.intersection(known)
+        enablement.seedEnabledProviders(fallback)
+        AppLog.info(.config, "reset all: seeded providers \(fallback.sorted()); re-probing local credentials")
+        return Task {
+            let detected = await detectLocalProviders(providers)
+            AppLog.info(.config, "reset all: detected credentials for \(detected.sorted())")
+            guard enablement.enabledIDs == fallback, !detected.isEmpty else { return }
+            enablement.seedEnabledProviders(detected)
+        }
+    }
+
+    /// Local-only credential probe across every provider: the set whose `hasLocalCredentials()` (config
+    /// files/keychain, never the network) reports a login on this machine. Shared by first-run seeding
+    /// and the Customize "Reset All" reseed so both detect installed tools the same way.
+    static func detectLocalProviders(_ providers: [ProviderRuntime]) async -> Set<String> {
+        var detected = Set<String>()
+        for provider in providers where await provider.hasLocalCredentials() {
+            detected.insert(provider.provider.id)
+        }
+        return detected
     }
 }
