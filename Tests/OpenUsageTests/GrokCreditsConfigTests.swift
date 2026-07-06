@@ -14,26 +14,35 @@ final class GrokCreditsConfigDecoderTests: XCTestCase {
         XCTAssertEqual(config.periodDurationMs, 7 * 24 * 60 * 60 * 1000)
     }
 
-    func testRejectsNonZeroGRPCStatus() {
-        // The server reports errors inside an HTTP 200 via the trailer; a non-zero status must never
-        // fall through to a parse of nothing.
+    func testAbsentPercentDecodesAsZero() throws {
+        // proto-JSON drops zero-valued fields: a fresh weekly period omits `creditUsagePercent`
+        // entirely. That's a genuine 0%, never a schema-change error.
+        let config = try GrokCreditsConfigDecoder.decode(
+            responseBody: GrokCreditsFixtures.responseBody(percent: nil)
+        )
+        XCTAssertEqual(config.usedPercent, 0)
+    }
+
+    func testAbsentOnDemandCapDecodesAsZero() throws {
+        let config = try GrokCreditsConfigDecoder.decode(
+            responseBody: GrokCreditsFixtures.responseBody(onDemandCap: nil)
+        )
+        XCTAssertEqual(config.onDemandCap, 0)
+    }
+
+    func testRejectsNonNumericOnDemandCap() {
         XCTAssertThrowsError(
-            try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.errorResponseBody(status: 13))
+            try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.responseBody(onDemandCap: "lots"))
         ) { error in
             XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
         }
     }
 
-    func testRejectsNonFinitePercent() {
-        // clampPercent would silently turn NaN into 0, rendering a corrupt payload as a believable
-        // "0% used" — the decoder must throw before any clamping.
+    func testRejectsNonNumericPercent() {
+        // A present but non-numeric percent is a schema change, not a 0 — clamping it to a
+        // believable "0% used" would hide the drift.
         XCTAssertThrowsError(
-            try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.responseBody(percent: .nan))
-        ) { error in
-            XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
-        }
-        XCTAssertThrowsError(
-            try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.responseBody(percent: .infinity))
+            try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.responseBody(percent: "high"))
         ) { error in
             XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
         }
@@ -42,7 +51,7 @@ final class GrokCreditsConfigDecoderTests: XCTestCase {
     func testRejectsPeriodThatDoesNotMoveForward() {
         XCTAssertThrowsError(
             try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.responseBody(
-                startSeconds: 1_783_460_212, endSeconds: 1_782_855_412
+                start: "2026-07-07T21:36:52.140114+00:00", end: "2026-06-30T21:36:52.140114+00:00"
             ))
         ) { error in
             XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
@@ -50,41 +59,27 @@ final class GrokCreditsConfigDecoderTests: XCTestCase {
     }
 
     func testRejectsMissingConfigFields() {
-        // A well-formed frame whose protobuf lacks the fields we map is a schema change, not a blank.
-        let empty = GRPCWebCodec.frame(Data()) + GrokCreditsFixtures.okTrailerFrame
-        XCTAssertThrowsError(try GrokCreditsConfigDecoder.decode(responseBody: empty)) { error in
-            XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
+        // A well-formed JSON body lacking the fields we map is a schema change, not a blank.
+        for body in ["{}", #"{"config":{}}"#, #"{"config":{"currentPeriod":{}}}"#, "not json"] {
+            XCTAssertThrowsError(
+                try GrokCreditsConfigDecoder.decode(responseBody: Data(body.utf8)),
+                "body: \(body)"
+            ) { error in
+                XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
+            }
         }
-    }
-
-    func testSkipsUnknownFieldsAroundTheOnesWeMap() throws {
-        // Splice unknown fields (including a fixed64, a wire type the real capture doesn't use) around
-        // the known ones at both nesting levels.
-        let period = GrokCreditsFixtures.field(9, fixed64: 0xFEED)
-            + GrokCreditsFixtures.field(1, varint: 2)
-            + GrokCreditsFixtures.field(2, message: GrokCreditsFixtures.timestamp(seconds: 1_782_855_412))
-            + GrokCreditsFixtures.field(3, message: GrokCreditsFixtures.timestamp(seconds: 1_783_460_212))
-        let config = GrokCreditsFixtures.field(42, fixed64: 1)
-            + GrokCreditsFixtures.field(1, float: 55.5)
-            + GrokCreditsFixtures.field(8, message: period)
-            + GrokCreditsFixtures.field(13, varint: 1)
-        let body = GRPCWebCodec.frame(GrokCreditsFixtures.field(1, message: config)) + GrokCreditsFixtures.okTrailerFrame
-
-        let decoded = try GrokCreditsConfigDecoder.decode(responseBody: body)
-
-        XCTAssertEqual(decoded.usedPercent, 55.5)
-        XCTAssertEqual(decoded.periodType, 2)
     }
 }
 
 final class GrokCreditsConfigMapperTests: XCTestCase {
-    func testMapsWeeklyLineFromCapturedResponse() throws {
-        let line = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
+    func testMapsWeeklyLineAndBadgeFromCapturedResponse() throws {
+        let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
             statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody
         ))
 
-        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, _)? = line else {
-            return XCTFail("expected a progress line, got \(String(describing: line))")
+        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, _)? =
+                mapped.lines.first(where: { $0.label == "Weekly limit" }) else {
+            return XCTFail("expected a Weekly limit progress line, got \(mapped.lines)")
         }
         XCTAssertEqual(label, "Weekly limit")
         XCTAssertEqual(used, 99.0)
@@ -93,22 +88,44 @@ final class GrokCreditsConfigMapperTests: XCTestCase {
         XCTAssertEqual(resetsAt?.timeIntervalSince1970 ?? 0,
                        GrokCreditsFixtures.capturedPeriodEnd.timeIntervalSince1970, accuracy: 0.001)
         XCTAssertEqual(periodDurationMs, 7 * 24 * 60 * 60 * 1000)
+
+        guard case .badge(_, let text, let colorHex, _)? =
+                mapped.lines.first(where: { $0.label == "Pay as you go" }) else {
+            return XCTFail("expected a Pay as you go badge")
+        }
+        XCTAssertEqual(text, "Disabled", "captured cap is 0")
+        XCTAssertEqual(colorHex, "#a3a3a3")
     }
 
-    func testNonWeeklyPeriodMapsToNoLine() throws {
-        // An account still on monthly-only billing has no weekly pool; the tile must read "No data"
-        // rather than mislabel a monthly percent as weekly.
-        let line = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
-            statusCode: 200, headers: [:], body: GrokCreditsFixtures.responseBody(periodType: 1)
+    func testMapsEnabledPayAsYouGoCap() throws {
+        let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
+            statusCode: 200, headers: [:], body: GrokCreditsFixtures.responseBody(onDemandCap: 2500)
         ))
-        XCTAssertNil(line)
+        guard case .badge(_, let text, let colorHex, _)? =
+                mapped.lines.first(where: { $0.label == "Pay as you go" }) else {
+            return XCTFail("expected a Pay as you go badge")
+        }
+        XCTAssertEqual(text, "2500 cap")
+        XCTAssertEqual(colorHex, "#22c55e")
+    }
+
+    func testNonWeeklyPeriodMapsToNoWeeklyLine() throws {
+        // An account still on monthly-only billing has no weekly pool; the tile must read "No data"
+        // rather than mislabel a monthly percent as weekly. The badge still renders.
+        let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
+            statusCode: 200, headers: [:],
+            body: GrokCreditsFixtures.responseBody(periodType: "USAGE_PERIOD_TYPE_MONTHLY")
+        ))
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Weekly limit" }))
+        XCTAssertNotNil(mapped.lines.first(where: { $0.label == "Pay as you go" }))
     }
 
     func testClampsOutOfRangePercent() throws {
-        let line = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
+        let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
             statusCode: 200, headers: [:], body: GrokCreditsFixtures.responseBody(percent: 150)
         ))
-        guard case .progress(_, let used, _, _, _, _, _)? = line else {
+        guard case .progress(_, let used, _, _, _, _, _)? =
+                mapped.lines.first(where: { $0.label == "Weekly limit" }) else {
             return XCTFail("expected a progress line")
         }
         XCTAssertEqual(used, 100)

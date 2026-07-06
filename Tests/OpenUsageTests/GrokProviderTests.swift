@@ -1,56 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-final class GrokUsageMapperTests: XCTestCase {
-    func testMapsCreditsUsedAndPayAsYouGo() throws {
-        let mapped = try GrokUsageMapper.mapBillingResponse(HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: billingBody(used: "2500", monthlyLimit: "10000", onDemandCap: "2500")
-        ))
-
-        XCTAssertEqual(progress(mapped.lines, "Credits used")?.used, 25)
-        XCTAssertEqual(progress(mapped.lines, "Credits used")?.limit, 100)
-        XCTAssertEqual(progress(mapped.lines, "Credits used")?.resetsAt, OpenUsageISO8601.date(from: "2026-06-01T00:00:00.000Z"))
-        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.text, "2500 cap")
-        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.colorHex, "#22c55e")
-    }
-
-    func testMapsDisabledPayAsYouGo() throws {
-        let mapped = try GrokUsageMapper.mapBillingResponse(HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: billingBody(used: 4277, monthlyLimit: 60000, onDemandCap: 0)
-        ))
-
-        XCTAssertEqual(progress(mapped.lines, "Credits used")?.used ?? 0, 7.128, accuracy: 0.001)
-        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.text, "Disabled")
-        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.colorHex, "#a3a3a3")
-    }
-
-    func testMapsMissingOnDemandCapAsDisabled() throws {
-        // A SuperGrok account with no pay-as-you-go omits `onDemandCap` entirely. Previously the
-        // all-or-nothing guard threw `invalidResponse` ("Grok billing response changed."); it must
-        // now render the Disabled badge instead, like a present cap of 0.
-        let body: [String: Any] = [
-            "config": [
-                "used": ["val": 2500],
-                "monthlyLimit": ["val": 10000],
-                "billingPeriodEnd": "2026-06-01T00:00:00+00:00"
-            ]
-        ]
-        let mapped = try GrokUsageMapper.mapBillingResponse(HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: try JSONSerialization.data(withJSONObject: body)
-        ))
-
-        XCTAssertEqual(progress(mapped.lines, "Credits used")?.used, 25)
-        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.text, "Disabled")
-        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.colorHex, "#a3a3a3")
-    }
-}
-
 @MainActor
 final class GrokProviderTests: XCTestCase {
     func testRefreshesExpiredTokenPersistsAuthAndFetchesUsage() async {
@@ -78,17 +28,14 @@ final class GrokProviderTests: XCTestCase {
                     body: Data(#"{"access_token":"new-token","refresh_token":"new-refresh","expires_in":3600}"#.utf8)
                 )
             }
-            if request.url == GrokUsageClient.billingURL {
+            if request.url == GrokUsageClient.creditsConfigURL {
                 XCTAssertEqual(request.headers["Authorization"], "Bearer new-token")
                 XCTAssertEqual(request.headers["X-XAI-Token-Auth"], GrokUsageClient.tokenAuthHeader)
-                return HTTPResponse(statusCode: 200, headers: [:], body: billingBody(used: 2500, monthlyLimit: 10000, onDemandCap: 0))
+                return HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody)
             }
             if request.url == GrokUsageClient.settingsURL {
                 XCTAssertEqual(request.headers["Authorization"], "Bearer new-token")
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"subscription_tier_display":"SuperGrok Heavy"}"#.utf8))
-            }
-            if request.url == GrokUsageClient.creditsConfigURL {
-                return HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody)
             }
             return HTTPResponse(statusCode: 404, headers: [:], body: Data())
         }
@@ -103,7 +50,7 @@ final class GrokProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.plan, "SuperGrok Heavy")
-        XCTAssertEqual(progress(snapshot.lines, "Credits used")?.used, 25)
+        XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
         XCTAssertEqual(badge(snapshot.lines, "Pay as you go")?.text, "Disabled")
 
         let saved = GrokAuthStore.parseAuth(files.files[GrokAuthStore.authPath] ?? "")
@@ -116,7 +63,7 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertEqual(rawEntry?["custom_field"] as? String, "keep-me")
     }
 
-    func testRetriesBillingOnceAfterAuthError() async {
+    func testRetriesCreditsOnceAfterAuthError() async {
         let now = OpenUsageISO8601.date(from: "2026-02-02T00:00:00.000Z")!
         let files = FakeFiles([
             GrokAuthStore.authPath: """
@@ -129,14 +76,14 @@ final class GrokProviderTests: XCTestCase {
             }
             """
         ])
-        var billingCalls = 0
+        var creditsCalls = 0
         let httpClient = RecordingHTTPClient { request in
-            if request.url == GrokUsageClient.billingURL {
-                billingCalls += 1
-                if billingCalls == 1 {
+            if request.url == GrokUsageClient.creditsConfigURL {
+                creditsCalls += 1
+                if creditsCalls == 1 {
                     return HTTPResponse(statusCode: 401, headers: [:], body: Data())
                 }
-                return HTTPResponse(statusCode: 200, headers: [:], body: billingBody(used: 2500, monthlyLimit: 10000, onDemandCap: 0))
+                return HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody)
             }
             if request.url == GrokUsageClient.refreshURL {
                 return HTTPResponse(
@@ -147,9 +94,6 @@ final class GrokProviderTests: XCTestCase {
             }
             if request.url == GrokUsageClient.settingsURL {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"subscription_tier_display":"SuperGrok Heavy"}"#.utf8))
-            }
-            if request.url == GrokUsageClient.creditsConfigURL {
-                return HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody)
             }
             return HTTPResponse(statusCode: 404, headers: [:], body: Data())
         }
@@ -164,32 +108,22 @@ final class GrokProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.plan, "SuperGrok Heavy")
-        let billingAuths = httpClient.requests
-            .filter { $0.url == GrokUsageClient.billingURL }
-            .map { $0.headers["Authorization"] }
-        XCTAssertEqual(billingAuths, ["Bearer old-token", "Bearer new-token"])
-
-        // The weekly call runs after billing and must carry the rotated token, not the one the
-        // refresh cycle already proved dead.
         let creditsAuths = httpClient.requests
             .filter { $0.url == GrokUsageClient.creditsConfigURL }
             .map { $0.headers["Authorization"] }
-        XCTAssertEqual(creditsAuths, ["Bearer new-token"])
+        XCTAssertEqual(creditsAuths, ["Bearer old-token", "Bearer new-token"])
         XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
     }
 
-    func testWeeklyMeterComesFromCreditsConfig() async {
+    func testWeeklyMeterAndPayAsYouGoComeFromCreditsConfig() async {
         let httpClient = RecordingHTTPClient { request in
             if request.url == GrokUsageClient.creditsConfigURL {
-                // The endpoint's contract, pinned exactly: any drift in the framed request bytes is a
-                // protocol regression (the server rejects an empty message with grpc-status 13).
-                XCTAssertEqual(request.method, "POST")
-                XCTAssertEqual(request.body, Data([0x00, 0x00, 0x00, 0x00, 0x02, 0x08, 0x01]))
-                XCTAssertEqual(request.headers["Content-Type"], "application/grpc-web+proto")
-                XCTAssertEqual(request.headers["X-Grpc-Web"], "1")
+                // The same plain GET the Grok CLI makes, with the standard auth headers.
+                XCTAssertEqual(request.method, "GET")
+                XCTAssertNil(request.body)
                 XCTAssertEqual(request.headers["Authorization"], "Bearer token")
                 XCTAssertEqual(request.headers["X-XAI-Token-Auth"], GrokUsageClient.tokenAuthHeader)
-                XCTAssertEqual(request.headers["User-Agent"], "OpenUsage", "Cloudflare 403s unrecognized agents")
+                XCTAssertEqual(request.headers["User-Agent"], "OpenUsage")
                 return HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody)
             }
             return Self.defaultRoutes(request)
@@ -202,14 +136,13 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.limit, 100)
         XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.resetsAt?.timeIntervalSince1970 ?? 0,
                        GrokCreditsFixtures.capturedPeriodEnd.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(badge(snapshot.lines, "Pay as you go")?.text, "Disabled")
         XCTAssertNil(snapshot.warning)
-        XCTAssertEqual(progress(snapshot.lines, "Credits used")?.used, 25, "monthly meter rides along unchanged")
     }
 
-    func testWeeklyFetchFailureKeepsMonthlyAndRaisesWarning() async {
-        // The credits endpoint serves grok.com's website and can change independently of the CLI's
-        // API. Its failure must degrade to the amber header warning — never take down the monthly
-        // meter and spend tiles that still work.
+    func testCreditsFetchFailureFailsTheProvider() async {
+        // The credits config is the provider's only remote meter now — its failure is a provider
+        // error, not a partial degrade.
         let httpClient = RecordingHTTPClient { request in
             if request.url == GrokUsageClient.creditsConfigURL {
                 return HTTPResponse(statusCode: 503, headers: [:], body: Data())
@@ -220,21 +153,16 @@ final class GrokProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
+        XCTAssertNotNil(snapshot.errorCategory)
         XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
-        XCTAssertEqual(progress(snapshot.lines, "Credits used")?.used, 25)
-        XCTAssertEqual(badge(snapshot.lines, "Pay as you go")?.text, "Disabled")
-        XCTAssertEqual(snapshot.warning, GrokUsageMapper.weeklyUnavailableWarning)
-        XCTAssertNil(snapshot.errorCategory, "a weekly-only failure must not mark the provider errored")
     }
 
-    func testWeeklyGRPCErrorInsideHTTP200RaisesWarning() async {
-        // gRPC reports failures inside an HTTP 200 via the trailer — including auth-ish statuses the
-        // HTTP-status-based retry can't see. Billing already proved the token, so this is a partial
-        // failure (warning), not an app-wide auth error.
+    func testMalformedBodyInsideHTTP200FailsTheProvider() async {
+        // An HTTP 200 whose body isn't the shape we know is schema drift — fail loudly rather than
+        // render a blank dashboard silently.
         let httpClient = RecordingHTTPClient { request in
             if request.url == GrokUsageClient.creditsConfigURL {
-                return HTTPResponse(statusCode: 200, headers: [:],
-                                    body: GrokCreditsFixtures.errorResponseBody(status: 16, message: "unauthenticated"))
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"config":{}}"#.utf8))
             }
             return Self.defaultRoutes(request)
         }
@@ -242,18 +170,16 @@ final class GrokProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
-        XCTAssertEqual(progress(snapshot.lines, "Credits used")?.used, 25)
-        XCTAssertEqual(snapshot.warning, GrokUsageMapper.weeklyUnavailableWarning)
+        XCTAssertNotNil(snapshot.errorCategory)
     }
 
     func testNonWeeklyPeriodShowsNoWeeklyLineAndNoWarning() async {
         // A not-yet-migrated (monthly-period) account is a valid state, not a failure: the Weekly
-        // tile reads "No data" without the amber triangle.
+        // tile reads "No data" without the amber triangle, and the badge still renders.
         let httpClient = RecordingHTTPClient { request in
             if request.url == GrokUsageClient.creditsConfigURL {
                 return HTTPResponse(statusCode: 200, headers: [:],
-                                    body: GrokCreditsFixtures.responseBody(periodType: 1))
+                                    body: GrokCreditsFixtures.responseBody(periodType: "USAGE_PERIOD_TYPE_MONTHLY"))
             }
             return Self.defaultRoutes(request)
         }
@@ -262,7 +188,9 @@ final class GrokProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
+        XCTAssertEqual(badge(snapshot.lines, "Pay as you go")?.text, "Disabled")
         XCTAssertNil(snapshot.warning)
+        XCTAssertNil(snapshot.errorCategory)
     }
 
     func testRefreshAppendsLocalSpendTilesFromLog() async {
@@ -284,7 +212,7 @@ final class GrokProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         // Existing credit lines stay; the three spend tiles are appended from the local log.
-        XCTAssertEqual(progress(snapshot.lines, "Credits used")?.used, 25)
+        XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Yesterday"),
@@ -353,17 +281,13 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertNil(snapshot.lines.first(where: { $0.label == "Usage Trend" }), "no log means no trend chart")
     }
 
-    /// The stock happy-path routes: billing (25% used, no pay-as-you-go), the plan name, and the
-    /// captured weekly credits config.
+    /// The stock happy-path routes: the captured weekly credits config and the plan name.
     private static func defaultRoutes(_ request: HTTPRequest) -> HTTPResponse {
-        if request.url == GrokUsageClient.billingURL {
-            return HTTPResponse(statusCode: 200, headers: [:], body: billingBody(used: 2500, monthlyLimit: 10000, onDemandCap: 0))
+        if request.url == GrokUsageClient.creditsConfigURL {
+            return HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody)
         }
         if request.url == GrokUsageClient.settingsURL {
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"subscription_tier_display":"SuperGrok Heavy"}"#.utf8))
-        }
-        if request.url == GrokUsageClient.creditsConfigURL {
-            return HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody)
         }
         return HTTPResponse(statusCode: 404, headers: [:], body: Data())
     }
@@ -434,18 +358,6 @@ private final class RecordingHTTPClient: HTTPClient, @unchecked Sendable {
         requests.append(request)
         return try handler(request)
     }
-}
-
-private func billingBody(used: Any, monthlyLimit: Any, onDemandCap: Any) -> Data {
-    let body: [String: Any] = [
-        "config": [
-            "used": ["val": used],
-            "monthlyLimit": ["val": monthlyLimit],
-            "onDemandCap": ["val": onDemandCap],
-            "billingPeriodEnd": "2026-06-01T00:00:00+00:00"
-        ]
-    ]
-    return try! JSONSerialization.data(withJSONObject: body)
 }
 
 private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?)? {

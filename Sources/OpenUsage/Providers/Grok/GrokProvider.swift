@@ -34,7 +34,6 @@ final class GrokProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "grok.weekly", provider: provider, title: "Weekly", metricLabel: "Weekly limit"),
-            .percent(id: "grok.creditsUsed", provider: provider, title: "Monthly", metricLabel: "Credits used"),
             .badge(id: "grok.payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go"),
             .usageTrend(provider: provider)
             // Local spend tiles, estimated from the Grok CLI log (see GrokLogUsageScanner).
@@ -80,26 +79,11 @@ final class GrokProvider: ProviderRuntime {
     }
 
     private func probe(state: inout GrokAuthState, accessToken: String) async throws -> ProviderSnapshot {
-        let billingResponse = try await fetchBillingWithRetry(accessToken: accessToken, state: &state)
-        var mapped = try GrokUsageMapper.mapBillingResponse(billingResponse)
-
-        // The weekly shared-pool meter comes from a separate gRPC-web endpoint (grok.com — the
-        // website's transport, which can change independently of the CLI's API). Runs after billing
-        // with `state.token` so it sees a token the billing retry may have rotated. A failure here
-        // must not take down the still-working monthly and spend data: log it and raise the amber
-        // header warning instead, leaving the Weekly tile on "No data". This also covers a gRPC-level
-        // auth error inside an HTTP 200, which the status-based retry can't see — billing already
-        // proved the token, so it isn't an app-wide auth problem.
-        var warning: String?
-        do {
-            let creditsResponse = try await fetchCreditsConfigWithRetry(accessToken: state.token, state: &state)
-            if let weekly = try GrokUsageMapper.mapCreditsConfig(creditsResponse) {
-                mapped.lines.insert(weekly, at: 0)
-            }
-        } catch {
-            AppLog.error(LogTag.plugin("grok"), "weekly credits config fetch failed; monthly data unaffected: \(error.localizedDescription)")
-            warning = GrokUsageMapper.weeklyUnavailableWarning
-        }
+        // The weekly shared-pool meter and pay-as-you-go badge come from the billing endpoint with
+        // `?format=credits` — the call the Grok CLI itself makes. This is the provider's primary
+        // remote fetch; a failure here fails the provider like any other usage call.
+        let creditsResponse = try await fetchCreditsConfigWithRetry(accessToken: accessToken, state: &state)
+        var mapped = try GrokUsageMapper.mapCreditsConfig(creditsResponse)
 
         let plan = await fetchPlanName(accessToken: state.token)
 
@@ -118,24 +102,7 @@ final class GrokProvider: ProviderRuntime {
                                              note: "From your Grok logs (estimated)")
         }
 
-        return ProviderSnapshot.make(provider: provider, plan: plan, lines: mapped.lines, refreshedAt: now(), warning: warning)
-    }
-
-    private func fetchBillingWithRetry(accessToken: String, state: inout GrokAuthState) async throws -> HTTPResponse {
-        var working = state
-        defer { state = working }
-        return try await ProviderAuthRetry.fetch(
-            token: accessToken,
-            attempt: { try await self.usageClient.fetchBilling(accessToken: $0) },
-            refreshAccessToken: {
-                guard let refreshed = await self.refreshAccessToken(state: &working) else {
-                    throw GrokAuthError.expired
-                }
-                return refreshed
-            },
-            connectionFailed: GrokUsageError.connectionFailed,
-            authExpired: GrokAuthError.expired
-        )
+        return ProviderSnapshot.make(provider: provider, plan: plan, lines: mapped.lines, refreshedAt: now())
     }
 
     private func fetchCreditsConfigWithRetry(accessToken: String, state: inout GrokAuthState) async throws -> HTTPResponse {
