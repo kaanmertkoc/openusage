@@ -141,11 +141,10 @@ final class CursorProvider: ProviderRuntime {
             creditGrants: creditGrants,
             stripeBalanceCents: stripeBalanceCents
         )
-        var spendActivity: SpendActivity?
         if Self.spendTrackingEnabled {
-            spendActivity = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
+            await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
         }
-        return snapshot(mapped, spendActivity: spendActivity)
+        return snapshot(mapped)
     }
 
     /// Strictly additive: fetch the usage CSV and append the three per-day spend tiles. Any failure
@@ -154,7 +153,7 @@ final class CursorProvider: ProviderRuntime {
     ///
     /// Currently dormant: only called when `spendTrackingEnabled` is true. Kept intact so re-enabling
     /// Cursor spend tracking is a one-line flag flip (see `spendTrackingEnabled`).
-    private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async -> SpendActivity? {
+    private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async {
         let calendar = Calendar.current
         let end = now()
         let startOfToday = calendar.startOfDay(for: end)
@@ -164,11 +163,11 @@ final class CursorProvider: ProviderRuntime {
               (200..<300).contains(response.statusCode),
               let csv = String(data: response.body, encoding: .utf8)
         else {
-            return nil
+            return
         }
         let pricing = await pricing()
         let rows = CursorUsageCSV.parse(csv: csv, pricing: pricing)
-        return CursorUsageMapper.appendSpendLines(rows: rows, now: end, pricing: pricing, to: &lines)
+        CursorUsageMapper.appendSpendLines(rows: rows, now: end, pricing: pricing, to: &lines)
     }
 
     private func fetchUsageWithRetry(accessToken: String, authState: inout CursorAuthState) async throws -> HTTPResponse {
@@ -276,7 +275,7 @@ final class CursorProvider: ProviderRuntime {
             && ProviderParse.number(planUsage["totalPercentUsed"]) == nil
     }
 
-    private func snapshot(_ mapped: CursorMappedUsage, spendActivity: SpendActivity? = nil) -> ProviderSnapshot {
-        ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now(), spendActivity: spendActivity)
+    private func snapshot(_ mapped: CursorMappedUsage) -> ProviderSnapshot {
+        ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
     }
 }

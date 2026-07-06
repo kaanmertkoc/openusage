@@ -234,15 +234,11 @@ enum CursorUsageMapper {
     /// the family comes from the same machinery that prices the row (ported from cursorcat's
     /// family grouping). The raw slugs survive as `variants` — the per-effort breakdown the row's
     /// tooltip shows.
-    /// Returns the hourly + daily `SpendActivity` for the Total Spend stacked chart (`nil` when no
-    /// row priced), built from the same priced rows as the tiles.
-    @discardableResult
-    static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, pricing: ModelPricing, to lines: inout [MetricLine]) -> SpendActivity? {
+    static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, pricing: ModelPricing, to lines: inout [MetricLine]) {
         let calendar = Calendar.current
         var costByDay: [String: Double] = [:]
         var tokensByDay: [String: Int] = [:]
         var modelsByDay: [String: [String: ModelAccumulator]] = [:]
-        var activity = SpendActivityBuilder()
         // Rows no pricing source can price (nil imputed cost) are excluded from every displayed total —
         // tokens, dollars, the trend, and the model breakdown — because mixing measured tokens with
         // unpriceable ones makes the figures incoherent (a huge token count next to a dollar figure that
@@ -261,7 +257,6 @@ enum CursorUsageMapper {
             }
             costByDay[day, default: 0] += cost
             tokensByDay[day, default: 0] += row.tokens.totalTokens
-            activity.add(timestamp: row.date, tokens: row.tokens.totalTokens, costUSD: cost)
             let modelName = model.isEmpty ? ModelUsageEntry.unattributedModelName : model
             let family = model.isEmpty ? modelName : familyName(for: model, pricing: pricing)
             modelsByDay[day, default: [:]][family, default: ModelAccumulator()].add(
@@ -297,7 +292,6 @@ enum CursorUsageMapper {
         // note names that source rather than the "estimated from local logs" line the log-scanning
         // providers use. Tokens are measured either way.
         SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage export")
-        return activity.build(estimated: false, now: now)
     }
 
     private static func dayKey(from date: Date, calendar: Calendar) -> String {

@@ -126,7 +126,6 @@ final class CodexProvider: ProviderRuntime {
 
         // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced
         // through the shared pricing store. `scan` runs on the scanner actor, off the main actor.
-        var spendActivity: SpendActivity?
         if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
@@ -138,11 +137,10 @@ final class CodexProvider: ProviderRuntime {
                 scan.series, to: &mapped.lines, now: now(),
                 note: "From your Codex logs (estimated)"
             )
-            spendActivity = scan.activity
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now(), spendActivity: spendActivity)
+        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
     }
 
     /// Fetches the on-demand reset-credit balance (and per-credit expiry) without ever failing the

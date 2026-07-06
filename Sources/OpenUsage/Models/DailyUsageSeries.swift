@@ -72,19 +72,10 @@ struct LogUsageScan: Sendable {
     var modelUsage: ModelUsageSeries?
     /// `yyyy-MM-dd` day key → models used that day with no pricing entry (their cost shows as $0).
     var unknownModelsByDay: [String: Set<String>]
-    /// Hourly + daily spend buckets for the Total Spend stacked chart, built from the same priced
-    /// events as `series`. `nil` when the scan found no usage.
-    var activity: SpendActivity?
 
-    init(
-        series: DailyUsageSeries,
-        modelUsage: ModelUsageSeries? = nil,
-        unknownModelsByDay: [String: Set<String>],
-        activity: SpendActivity? = nil
-    ) {
+    init(series: DailyUsageSeries, modelUsage: ModelUsageSeries? = nil, unknownModelsByDay: [String: Set<String>]) {
         self.series = series
         self.modelUsage = modelUsage
         self.unknownModelsByDay = unknownModelsByDay
-        self.activity = activity
     }
 }

@@ -89,7 +89,6 @@ final class GrokProvider: ProviderRuntime {
 
         // Local spend tiles, read natively from the Grok CLI log and priced via the shared pricing
         // store. `scan` is awaited so its whole-file read + parse runs off the main actor.
-        var spendActivity: SpendActivity?
         if let scan = await logUsageScanner.scan(daysBack: 30, now: now(), pricing: await pricing()) {
             SpendTileMapper.appendTokenUsage(
                 scan.series,
@@ -101,10 +100,9 @@ final class GrokProvider: ProviderRuntime {
             )
             SpendTileMapper.appendUsageTrend(scan.series, to: &mapped.lines, now: now(),
                                              note: "From your Grok logs (estimated)")
-            spendActivity = scan.activity
         }
 
-        return ProviderSnapshot.make(provider: provider, plan: plan, lines: mapped.lines, refreshedAt: now(), spendActivity: spendActivity)
+        return ProviderSnapshot.make(provider: provider, plan: plan, lines: mapped.lines, refreshedAt: now())
     }
 
     private func fetchCreditsConfigWithRetry(accessToken: String, state: inout GrokAuthState) async throws -> HTTPResponse {

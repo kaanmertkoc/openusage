@@ -115,15 +115,15 @@ enum ShareCardRenderer {
     /// "copied" micro-animation on actual success.
     @discardableResult
     static func shareTotalSpend(
-        data: TotalSpendChartData,
+        total: TotalSpend,
         appearance: ColorScheme,
         layout: LayoutStore
     ) -> Bool {
-        guard !data.isEmpty else {
+        guard !total.isEmpty else {
             NSSound.beep()
             return false
         }
-        let view = TotalSpendShareCardView(data: data, appearance: appearance)
+        let view = TotalSpendShareCardView(total: total, appearance: appearance)
         let densityKey = DensitySetting.key
         let savedDensity = UserDefaults.standard.string(forKey: densityKey)
         UserDefaults.standard.set(DensitySetting.regular.rawValue, forKey: densityKey)

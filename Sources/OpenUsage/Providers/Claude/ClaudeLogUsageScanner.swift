@@ -88,7 +88,7 @@ actor ClaudeLogUsageScanner {
             guard let cached = nextCache[file.path] else { continue }
             entries.append(contentsOf: cached.entries)
         }
-        return Self.aggregate(entries: Self.dedup(entries), since: since, pricing: pricing, now: now)
+        return Self.aggregate(entries: Self.dedup(entries), since: since, pricing: pricing)
     }
 
     /// Read + parse the changed files in parallel (they're independent; the first scan of a heavy
@@ -430,13 +430,12 @@ actor ClaudeLogUsageScanner {
     /// because mixing measured tokens with unpriceable ones makes the figures incoherent. An unknown
     /// model's name lands in `unknownModelsByDay` (the tile's warning triangle), the only place
     /// unpriceable usage surfaces.
-    static func aggregate(entries: [Entry], since: Date, pricing: ModelPricing, now: Date = Date()) -> LogUsageScan {
+    static func aggregate(entries: [Entry], since: Date, pricing: ModelPricing) -> LogUsageScan {
         var tokensByDay: [String: Int] = [:]
         var costByDay: [String: Double] = [:]
         var pricedDays: Set<String> = []
         var unknownModelsByDay: [String: Set<String>] = [:]
         var modelsByDay: [String: [String: ModelAccumulator]] = [:]
-        var activity = SpendActivityBuilder()
 
         for entry in entries where entry.timestamp >= since {
             let day = dayKey(from: entry.timestamp)
@@ -460,7 +459,6 @@ actor ClaudeLogUsageScanner {
             tokensByDay[day, default: 0] += entry.tokens.totalTokens
             costByDay[day, default: 0] += cost
             pricedDays.insert(day)
-            activity.add(timestamp: entry.timestamp, tokens: entry.tokens.totalTokens, costUSD: cost)
             modelsByDay[day, default: [:]][modelName, default: ModelAccumulator()].add(
                 tokens: entry.tokens.totalTokens,
                 costUSD: cost
@@ -485,8 +483,7 @@ actor ClaudeLogUsageScanner {
         return LogUsageScan(
             series: DailyUsageSeries(daily: days),
             modelUsage: modelUsage,
-            unknownModelsByDay: unknownModelsByDay,
-            activity: activity.build(estimated: true, now: now)
+            unknownModelsByDay: unknownModelsByDay
         )
     }
 

@@ -16,10 +16,6 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     /// Set only on error snapshots: a stable, non-PII bucket for the failure, read by telemetry on the
     /// failure path. Always `nil` on success (and error snapshots aren't cached), so it never persists.
     var errorCategory: ErrorCategory?
-    /// Hourly + daily spend buckets for the Total Spend stacked chart — only spend-tracking providers
-    /// carry it. Optional and `decodeIfPresent`-friendly, so snapshots cached before it shipped still
-    /// decode (they just don't feed the chart until their next refresh).
-    var spendActivity: SpendActivity?
 
     init(
         providerID: String,
@@ -28,8 +24,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         lines: [MetricLine],
         refreshedAt: Date = Date(),
         warning: String? = nil,
-        errorCategory: ErrorCategory? = nil,
-        spendActivity: SpendActivity? = nil
+        errorCategory: ErrorCategory? = nil
     ) {
         self.providerID = providerID
         self.displayName = displayName
@@ -38,7 +33,6 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         self.refreshedAt = refreshedAt
         self.warning = warning
         self.errorCategory = errorCategory
-        self.spendActivity = spendActivity
     }
 
     func line(label: String) -> MetricLine? {
@@ -48,22 +42,14 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     /// The success-path counterpart to `error(provider:message:)`: derives `providerID`/`displayName`
     /// from the provider so every runtime builds its snapshot the same way (`refreshedAt` is required
     /// so each call passes its own `now()`).
-    static func make(
-        provider: Provider,
-        plan: String?,
-        lines: [MetricLine],
-        refreshedAt: Date,
-        warning: String? = nil,
-        spendActivity: SpendActivity? = nil
-    ) -> ProviderSnapshot {
+    static func make(provider: Provider, plan: String?, lines: [MetricLine], refreshedAt: Date, warning: String? = nil) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
             plan: plan,
             lines: lines,
             refreshedAt: refreshedAt,
-            warning: warning,
-            spendActivity: spendActivity
+            warning: warning
         )
     }
 

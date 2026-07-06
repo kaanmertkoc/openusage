@@ -2,14 +2,13 @@ import AppKit
 import Charts
 import SwiftUI
 
-/// The dashboard's cross-provider Total Spend section: a capsule period switcher over a stacked bar
-/// chart of spend over time — per hour for Today / Yesterday, per day for Last 30 Days — with each
-/// bar stacked by provider (brand colors). The exact period total sits top-left inside the card with
-/// the share control opposite it, and a color legend closes the card. Hovering a bar shows that
-/// slot's per-provider cost and tokens. Data comes from the `SpendActivity` buckets each snapshot
-/// carries (see `TotalSpendChartData`), the same priced events as the per-provider spend tiles.
-/// Shown only when at least two providers have spend data — a one-provider "total" would just
-/// repeat that provider's own rows.
+/// The dashboard's cross-provider Total Spend section: a native segmented period picker
+/// (Today / Yesterday / Last 30 Days) over a donut ring whose segments are each provider's share of
+/// the period's spend, with the total in the center and a ranked legend beside it. Data comes from
+/// `TotalSpendAggregator` over the same snapshots the provider cards render, so the ring always
+/// matches the per-provider spend tiles. Shown only when at least two providers have spend data
+/// (see `TotalSpendAggregator.hasCrossProviderSpend`) — a one-provider "total" would just repeat
+/// that provider's own rows.
 struct TotalSpendCard: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
@@ -35,8 +34,8 @@ struct TotalSpendCard: View {
         layout.displayGroups.map(\.provider)
     }
 
-    private var chartData: TotalSpendChartData {
-        TotalSpendChartData.build(period: period, providers: providers, snapshots: dataStore.snapshots)
+    private var total: TotalSpend {
+        TotalSpendAggregator.total(for: period, providers: providers, snapshots: dataStore.snapshots)
     }
 
     var body: some View {
@@ -48,7 +47,8 @@ struct TotalSpendCard: View {
 
     // MARK: - Header
 
-    /// Section header matching the provider headers' scale.
+    /// Section header matching the provider headers' scale: title leading, the share control trailing
+    /// where a provider header shows its mark.
     private var header: some View {
         HStack(spacing: 5) {
             Text("Total Spend")
@@ -56,46 +56,18 @@ struct TotalSpendCard: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             Spacer(minLength: 8)
+            shareButton
         }
         .padding(.leading, 4)
         .padding(.trailing, 4)
         .padding(.vertical, 2)
     }
 
-    // MARK: - Card
-
-    private var card: some View {
-        let data = chartData
-        return VStack(spacing: 12) {
-            periodPicker
-            if data.isEmpty {
-                emptyState
-            } else {
-                TotalSpendChartContent(data: data) {
-                    shareButton(data: data)
-                }
-                // Identity-keyed on the period so a switch crossfades to the new chart instead of
-                // morphing bars between unrelated time domains.
-                .id(data.period)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity)
-        .cardSurface()
-        .animation(Motion.spring, value: periodRawValue)
-        .contextMenu {
-            Button("Share Screenshot") {
-                ShareCardRenderer.shareTotalSpend(data: data, appearance: colorScheme, layout: layout)
-            }
-        }
-    }
-
-    private func shareButton(data: TotalSpendChartData) -> some View {
+    private var shareButton: some View {
         Button {
             // The checkmark only appears when the PNG actually landed on the pasteboard — a failed
             // render/copy beeps (inside the renderer) and the icon stays a share arrow.
-            guard ShareCardRenderer.shareTotalSpend(data: data, appearance: colorScheme, layout: layout) else { return }
+            guard ShareCardRenderer.shareTotalSpend(total: total, appearance: colorScheme, layout: layout) else { return }
             withAnimation(Motion.spring) { shareCopied = true }
             shareRevertTask?.cancel()
             shareRevertTask = Task {
@@ -114,9 +86,33 @@ struct TotalSpendCard: View {
         .accessibilityLabel("Share Total Spend Screenshot")
     }
 
+    // MARK: - Card
+
+    private var card: some View {
+        VStack(spacing: 12) {
+            periodPicker
+            if total.isEmpty {
+                emptyState
+            } else {
+                TotalSpendRingContent(total: total)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .cardSurface()
+        .animation(Motion.spring, value: periodRawValue)
+        .contextMenu {
+            Button("Share Screenshot") {
+                ShareCardRenderer.shareTotalSpend(total: total, appearance: colorScheme, layout: layout)
+            }
+        }
+    }
+
     /// A capsule segmented switcher in the app's own design language (the footer's glass capsule
-    /// controls). The selected segment is a floating pill that slides between segments via
-    /// `matchedGeometryEffect`.
+    /// controls), replacing the stock `.segmented` picker whose legacy rounded-rect chrome clashes
+    /// with the Tahoe look. The selected segment is a Liquid Glass capsule (frosted material on
+    /// macOS 15) that slides between segments via `matchedGeometryEffect`.
     private var periodPicker: some View {
         HStack(spacing: 2) {
             ForEach(TotalSpendPeriod.allCases) { candidate in
@@ -154,7 +150,7 @@ struct TotalSpendCard: View {
     }
 
     /// A period every provider sat out (or one the sources haven't accounted for yet) mirrors the spend
-    /// tiles' "No data" rule — never a fabricated $0.00 chart.
+    /// tiles' "No data" rule — never a fabricated $0.00 ring.
     private var emptyState: some View {
         Text("No spend data for this period")
             .font(.system(size: density.supportingPointSize))
@@ -164,202 +160,126 @@ struct TotalSpendCard: View {
     }
 }
 
-/// The chart body shared by the live card and the share-card export so the PNG can't drift from
-/// what's on screen: the exact total top-left (with the accessory — the live card's share button —
-/// opposite), the stacked bars, and the color legend. Hovering a bar raises a rule + panel with the
-/// slot's per-provider cost and tokens (static in the export).
-struct TotalSpendChartContent<Accessory: View>: View {
-    let data: TotalSpendChartData
-    @ViewBuilder var accessory: () -> Accessory
+/// The ring + legend body, shared by the live card and the share-card export so the PNG can't drift
+/// from what's on screen. Slices come ranked largest-first from the aggregator, so the ring reads
+/// clockwise from 12 o'clock in the same order the legend reads top-down.
+///
+/// A period switch **crossfades** the ring (the chart is identity-keyed on the period) instead of
+/// morphing the arcs. Ranked sector order and arc morphing are fundamentally incompatible in Swift
+/// Charts: the morph matches sectors by array position, so any re-sort smears one provider's arc
+/// into another's color mid-animation. Fixed-order morphing was tried and rejected — spend ranking
+/// matters more here — and a crossfade is how ranking-first charts (Screen Time among them) handle
+/// period switches.
+struct TotalSpendRingContent: View {
+    let total: TotalSpend
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-    /// The hovered instant on the chart's time axis (macOS updates it on pointer hover).
-    @State private var selection: Date?
 
-    private static var chartHeight: CGFloat { 110 }
+    private static let ringDiameter: CGFloat = 104
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            totalRow
-            chart
+        HStack(spacing: 18) {
+            ring
+                .id(total.period)
             legend
         }
     }
 
-    // MARK: - Total
+    // MARK: - Ring
 
-    /// The period total, exact to the cent — the user asked for the unshortened figure here; compact
-    /// forms stay in the legend.
-    private var totalRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(MetricFormatter.number(data.totalUSD, kind: .dollars, style: .full))
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            if data.isEstimated {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .hoverTooltip(WidgetData.localEstimateNote)
-            }
-            Spacer(minLength: 8)
-            accessory()
+    /// Every slice is guaranteed at least this share of the circle, so a $4 provider next to a $20K
+    /// one still shows a visible sliver instead of vanishing. Presentation-only — the legend and
+    /// center total keep the true dollars.
+    private static let minimumSliceShare = 0.025
+
+    /// A Swift Charts donut — `SectorMark` with the WWDC-demonstrated styling (golden-ratio hole,
+    /// small angular inset, rounded sector corners) — instead of hand-trimmed circle strokes, so the
+    /// chart matches the system's own pie/donut look.
+    ///
+    private var ring: some View {
+        Chart(total.slices) { slice in
+            SectorMark(
+                angle: .value("Spend", plottedShare(for: slice)),
+                innerRadius: .ratio(0.618),
+                angularInset: 0.8
+            )
+            .cornerRadius(3)
+            .foregroundStyle(TotalSpendPalette.color(for: slice.provider.id))
         }
-    }
-
-    // MARK: - Chart
-
-    private var chart: some View {
-        Chart {
-            ForEach(data.segments) { segment in
-                BarMark(
-                    x: .value("Time", segment.start, unit: data.bucketUnit),
-                    y: .value("Spend", segment.costUSD)
-                )
-                .foregroundStyle(by: .value("Provider", segment.provider.displayName))
-                .cornerRadius(2)
-            }
-            if let slot = hoveredSlot {
-                RuleMark(x: .value("Time", slot, unit: data.bucketUnit))
-                    .foregroundStyle(.secondary.opacity(0.35))
-                    .lineStyle(StrokeStyle(lineWidth: 1))
-                    .annotation(
-                        position: .top,
-                        alignment: .center,
-                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
-                    ) {
-                        hoverPanel(slot: slot)
-                    }
-            }
-        }
-        .chartForegroundStyleScale(
-            domain: data.providerTotals.map(\.provider.displayName),
-            range: data.providerTotals.map { TotalSpendPalette.color(for: $0.provider.id) }
-        )
         .chartLegend(.hidden)
-        .chartXScale(domain: data.xDomain)
-        .chartXAxis { xAxisMarks }
-        .chartYAxis {
-            AxisMarks(position: .trailing) { value in
-                AxisGridLine()
-                AxisValueLabel {
-                    if let dollars = value.as(Double.self) {
-                        Text(MetricFormatter.number(dollars, kind: .dollars, style: .tray))
-                            .font(.system(size: 8))
-                    }
+        .chartBackground { proxy in
+            GeometryReader { geometry in
+                if let anchor = proxy.plotFrame {
+                    let frame = geometry[anchor]
+                    centerLabel
+                        .position(x: frame.midX, y: frame.midY)
                 }
             }
         }
-        .chartXSelection(value: $selection)
-        .frame(height: Self.chartHeight)
-        .accessibilityLabel(accessibilityLabel)
+        .frame(width: Self.ringDiameter, height: Self.ringDiameter)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Total spend \(MetricFormatter.number(total.totalUSD, kind: .dollars, style: .full)) across \(total.slices.count) providers")
     }
 
-    @AxisContentBuilder
-    private var xAxisMarks: some AxisContent {
-        if data.period == .last30 {
-            AxisMarks(values: .stride(by: .day, count: 7)) { _ in
-                AxisValueLabel(format: .dateTime.month(.abbreviated).day(), collisionResolution: .greedy)
-                    .font(.system(size: 8))
-            }
-        } else {
-            AxisMarks(values: .stride(by: .hour, count: 6)) { _ in
-                AxisValueLabel(format: .dateTime.hour(), collisionResolution: .greedy)
-                    .font(.system(size: 8))
-            }
-        }
+    /// The slice's angular share with the minimum floor applied. Floors are absorbed by the biggest
+    /// spenders via the normalization SectorMark does anyway, so the ring still sums to a full circle.
+    private func plottedShare(for slice: TotalSpendSlice) -> Double {
+        guard total.totalUSD > 0 else { return 0 }
+        return max(slice.amountUSD / total.totalUSD, Self.minimumSliceShare)
     }
 
-    /// The hovered bucket's start, only when that bucket actually has data — hovering an idle hour
-    /// raises nothing.
-    private var hoveredSlot: Date? {
-        guard let selection else { return nil }
-        let slot = data.slotStart(for: selection)
-        return data.segments(at: slot).isEmpty ? nil : slot
+    /// Just the total, quiet and centered — the legend right next to it already says who and how
+    /// many. The tray style keeps it short ("$141", "$13.1K" — never "$140.75"); cents live in the
+    /// legend and the hover, which reveals the exact figure (and the local-estimate note when any
+    /// contributor is imputed).
+    private var centerLabel: some View {
+        Text(MetricFormatter.number(total.totalUSD, kind: .dollars, style: .tray))
+            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .foregroundStyle(.primary)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .padding(.horizontal, 14)
+            .hoverTooltip(centerTooltip)
     }
 
-    // MARK: - Hover panel
-
-    private func hoverPanel(slot: Date) -> some View {
-        let slices = data.segments(at: slot)
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(slotTitle(slot))
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.secondary)
-            ForEach(slices) { segment in
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(TotalSpendPalette.color(for: segment.provider.id))
-                        .frame(width: 6, height: 6)
-                    Text(segment.provider.displayName)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 10)
-                    Text(segmentReadout(segment))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(.separator, lineWidth: 0.5)
-        }
-    }
-
-    private func segmentReadout(_ segment: TotalSpendChartData.Segment) -> String {
-        let cost = MetricFormatter.number(segment.costUSD, kind: .dollars, style: .row)
-        let tokens = MetricFormatter.number(Double(segment.tokens), kind: .count, style: .row)
-        return "\(cost) · \(tokens) tokens"
-    }
-
-    private func slotTitle(_ slot: Date) -> String {
-        if data.period == .last30 {
-            return Formatters.monthDayLabel(slot)
-        }
-        let end = Calendar.current.date(byAdding: .hour, value: 1, to: slot) ?? slot
-        let formatter = Date.FormatStyle(date: .omitted, time: .shortened)
-        return "\(slot.formatted(formatter)) – \(end.formatted(formatter))"
+    private var centerTooltip: String {
+        let exact = MetricFormatter.number(total.totalUSD, kind: .dollars, style: .full)
+        return total.isEstimated ? "\(exact) · \(WidgetData.localEstimateNote)" : exact
     }
 
     // MARK: - Legend
 
-    /// Ranked color legend (largest spender first) with each provider's compact period total; exact
-    /// figures live on the bars' hover.
+    /// Rows in the ring's ranked order (largest spender first), so scanning the ring clockwise from
+    /// 12 o'clock matches reading the legend top-down.
     private var legend: some View {
-        HStack(spacing: 14) {
-            ForEach(data.providerTotals) { total in
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(TotalSpendPalette.color(for: total.provider.id))
-                        .frame(width: 7, height: 7)
-                    Text(total.provider.displayName)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(MetricFormatter.number(total.costUSD, kind: .dollars, style: .tray))
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(total.slices) { slice in
+                legendRow(slice)
             }
-            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var accessibilityLabel: String {
-        let total = MetricFormatter.number(data.totalUSD, kind: .dollars, style: .full)
-        return "Total spend \(total) across \(data.providerTotals.count) providers, \(data.period.rawValue)"
+    private func legendRow(_ slice: TotalSpendSlice) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(TotalSpendPalette.color(for: slice.provider.id))
+                .frame(width: 8, height: 8)
+            Text(slice.provider.displayName)
+                .font(.system(size: density.supportingPointSize))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(MetricFormatter.number(slice.amountUSD, kind: .dollars, style: .row))
+                .font(.system(size: density.supportingPointSize, weight: .medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
     }
 }
 
-/// Stable per-provider brand tints for the Total Spend chart and legend — the one place the app maps
+/// Stable per-provider brand tints for the Total Spend ring and legend — the one place the app maps
 /// a provider to a color, so the chart, legend, and share card always agree. Colors are keyed by
 /// provider ID only (never by rank or position), so a provider keeps its color across period
 /// switches, re-sorts, and launches. Hexes come from the legacy edition's per-plugin `brandColor`

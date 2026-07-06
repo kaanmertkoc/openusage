@@ -43,7 +43,7 @@ struct GrokLogUsageScanner: Sendable {
         guard files.exists(path), let text = try? files.readText(path) else {
             return nil
         }
-        return Self.parse(text, since: sinceDate(daysBack: daysBack, now: now), pricing: pricing, now: now)
+        return Self.parse(text, since: sinceDate(daysBack: daysBack, now: now), pricing: pricing)
     }
 
     private func sinceDate(daysBack: Int, now: Date) -> Date {
@@ -55,14 +55,13 @@ struct GrokLogUsageScanner: Sendable {
     /// "current model" (tracked regardless of date, so a session straddling the `since` boundary stays
     /// attributed); each in-window `inference_done` row is priced against its `pid`'s current model and
     /// bucketed by local calendar day.
-    static func parse(_ text: String, since: Date, pricing: ModelPricing, now: Date = Date()) -> LogUsageScan {
+    static func parse(_ text: String, since: Date, pricing: ModelPricing) -> LogUsageScan {
         var modelByPID: [Int: String] = [:]
         var tokensByDay: [String: Int] = [:]
         var costByDay: [String: Double] = [:]
         var pricedDays: Set<String> = []
         var unknownModelsByDay: [String: Set<String>] = [:]
         var modelsByDay: [String: [String: ModelAccumulator]] = [:]
-        var activity = SpendActivityBuilder()
 
         text.enumerateLines { line, _ in
             // Cheap pre-filter before JSON parsing: only model-carrying events and token rows matter
@@ -115,7 +114,6 @@ struct GrokLogUsageScanner: Sendable {
             tokensByDay[day, default: 0] += totalTokens
             costByDay[day, default: 0] += cost
             pricedDays.insert(day)
-            activity.add(timestamp: timestamp, tokens: totalTokens, costUSD: cost)
             modelsByDay[day, default: [:]][model, default: ModelAccumulator()].add(
                 tokens: totalTokens,
                 costUSD: cost
@@ -140,8 +138,7 @@ struct GrokLogUsageScanner: Sendable {
         return LogUsageScan(
             series: DailyUsageSeries(daily: days),
             modelUsage: modelUsage,
-            unknownModelsByDay: unknownModelsByDay,
-            activity: activity.build(estimated: true, now: now)
+            unknownModelsByDay: unknownModelsByDay
         )
     }
 

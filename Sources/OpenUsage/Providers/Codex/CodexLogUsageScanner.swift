@@ -85,7 +85,7 @@ actor CodexLogUsageScanner {
             events.append(contentsOf: cached.events)
         }
         return Self.aggregate(
-            events: events, since: since, pricing: pricing, fastTier: usesFastServiceTier(homes: homes), now: now
+            events: events, since: since, pricing: pricing, fastTier: usesFastServiceTier(homes: homes)
         )
     }
 
@@ -441,13 +441,12 @@ actor CodexLogUsageScanner {
     /// `unknownModelsByDay` (the tile's warning triangle), the only place unpriceable usage surfaces.
     /// A blank slug is unattributed, not unknown — there is no name to warn about.
     static func aggregate(
-        events: [Event], since: Date, pricing: ModelPricing, fastTier: Bool, now: Date = Date()
+        events: [Event], since: Date, pricing: ModelPricing, fastTier: Bool
     ) -> LogUsageScan {
         var seen: Set<EventKey> = []
         var tokensByDay: [String: Int] = [:]
         var costByDay: [String: Double] = [:]
         var pricedDays: Set<String> = []
-        var activity = SpendActivityBuilder()
         var unknownModelsByDay: [String: Set<String>] = [:]
         var modelsByDay: [String: [String: ModelAccumulator]] = [:]
 
@@ -473,7 +472,6 @@ actor CodexLogUsageScanner {
             tokensByDay[day, default: 0] += event.total
             costByDay[day, default: 0] += eventCost
             pricedDays.insert(day)
-            activity.add(timestamp: event.timestamp, tokens: event.total, costUSD: eventCost)
             modelsByDay[day, default: [:]][model, default: ModelAccumulator()].add(
                 tokens: event.total,
                 costUSD: eventCost
@@ -498,8 +496,7 @@ actor CodexLogUsageScanner {
         return LogUsageScan(
             series: DailyUsageSeries(daily: days),
             modelUsage: modelUsage,
-            unknownModelsByDay: unknownModelsByDay,
-            activity: activity.build(estimated: true, now: now)
+            unknownModelsByDay: unknownModelsByDay
         )
     }
 
