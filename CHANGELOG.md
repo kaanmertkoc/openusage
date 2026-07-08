@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.7.4-beta.5
+
+### New Features
+- Add Cost / Tokens / Cost/MTok menu to Total Spend card. ([#906](https://github.com/robinebers/openusage/pull/906)) by @robinebers
+
+### Bug Fixes
+- Reorder Total Spend metric menu to Cost, Cost/MTok, Tokens. ([#906](https://github.com/robinebers/openusage/pull/906)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.4-beta.4...v0.7.4-beta.5](https://github.com/robinebers/openusage/compare/v0.7.4-beta.4...v0.7.4-beta.5)
+
+- [a433934](https://github.com/robinebers/openusage/commit/a433934b220c1d6d1bdd02f20fcf7eb5d9791e48) Reorder Total Spend metric menu to Cost, Cost/MTok, Tokens. by @robinebers
+- [87e3ef4](https://github.com/robinebers/openusage/commit/87e3ef456cec47bb2e62efd3d3fe079ac3c9e4ba) Add Cost / Tokens / Cost/MTok menu to Total Spend card. by @robinebers
+
 ## v0.7.4-beta.4
 
 ### New Features
