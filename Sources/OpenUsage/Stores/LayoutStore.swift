@@ -103,7 +103,6 @@ final class LayoutStore {
     private let registry: WidgetRegistry
     private let persistence: LayoutPersistence
     private let defaultMetricIDs: [String]
-    private let migrationBaselineMetricIDs: [String]
     private let defaultPinnedMetricIDs: [String]
     private let defaultExpandedMetricIDs: [String]
     private var defaultExpandedOnEnableIDs: Set<String>
@@ -123,115 +122,33 @@ final class LayoutStore {
         let persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
         self.persistence = persistence
         self.defaultMetricIDs = defaultMetricIDs
-        self.migrationBaselineMetricIDs = migrationBaselineMetricIDs
         self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
         self.defaultExpandedMetricIDs = defaultExpandedMetricIDs
         self.isProviderEnabled = isProviderEnabled
 
-        let hasStoredLayout = persistence.hasStoredLayout
-        var initialPlaced: [PlacedWidget]
-        if let saved = persistence.loadPlaced() {
-            initialPlaced = saved.filter { registry.descriptor(id: $0.descriptorID) != nil }
-        } else {
-            initialPlaced = defaultMetricIDs
-                .filter { registry.descriptor(id: $0) != nil }
-                .map { PlacedWidget(descriptorID: $0) }
-        }
-        let seededResult = Self.seedNewDefaultMetrics(
-            into: initialPlaced,
-            persistence: persistence,
-            hasStoredLayout: hasStoredLayout,
+        let initial = LayoutBootstrap.load(
             registry: registry,
-            defaultMetricIDs: defaultMetricIDs,
-            migrationBaselineMetricIDs: migrationBaselineMetricIDs
+            persistence: persistence,
+            defaults: LayoutDefaultSet(
+                metricIDs: defaultMetricIDs,
+                migrationBaselineMetricIDs: migrationBaselineMetricIDs,
+                pinnedMetricIDs: defaultPinnedMetricIDs,
+                expandedMetricIDs: defaultExpandedMetricIDs
+            )
         )
-        initialPlaced = seededResult.placed
-        placed = initialPlaced
+        placed = initial.placed
+        providerOrder = initial.providerOrder
+        metricOrderByProvider = initial.metricOrderByProvider
+        pinnedMetricIDs = initial.pinnedMetricIDs
+        expandedMetricIDs = initial.expandedMetricIDs
+        expandedProviderIDs = initial.expandedProviderIDs
+        defaultExpandedOnEnableIDs = initial.defaultExpandedOnEnableIDs
+        menuBarStyle = initial.menuBarStyle
 
-        let initialProviderOrder: [String]
-        if let saved = persistence.loadProviderOrder() {
-            initialProviderOrder = saved
-        } else {
-            initialProviderOrder = registry.providers.map(\.id)
-        }
-        providerOrder = initialProviderOrder
-
-        let initialMetricOrder: [String: [String]]
-        if let saved = persistence.loadMetricOrder() {
-            initialMetricOrder = Self.normalizedMetricOrder(saved, registry: registry)
-        } else {
-            initialMetricOrder = Self.defaultMetricOrder(registry: registry)
-        }
-        metricOrderByProvider = initialMetricOrder
-
-        // Seed default pins on first launch (no saved value) so the menu bar shows real numbers out of
-        // the box; a saved value — including an empty one the user produced by unpinning — is respected.
-        if let savedPins = persistence.loadPins() {
-            pinnedMetricIDs = Set(savedPins.filter { registry.descriptor(id: $0) != nil })
-        } else {
-            pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
-        }
-
-        // Seed default expanded membership only on a genuinely fresh launch. An existing layout with no
-        // saved value predates this feature, so its metrics stay always-shown — never silently tuck a
-        // metric the user already lived with behind a new caret.
-        var shouldPersistExpanded = false
-        if let savedExpanded = persistence.loadExpandedMetrics() {
-            expandedMetricIDs = Set(savedExpanded.filter { registry.descriptor(id: $0) != nil })
-        } else if hasStoredLayout {
-            expandedMetricIDs = []
-        } else {
-            expandedMetricIDs = Set(defaultExpandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
-            shouldPersistExpanded = true
-        }
-        // Finalized below once `expandedMetricIDs` is settled; seeded here so every stored property is
-        // initialized before the reads that compute the real value.
-        defaultExpandedOnEnableIDs = []
-        menuBarStyle = persistence.loadMenuBarStyle()
-
-        if let savedExpandedProviders = persistence.loadExpandedProviders() {
-            expandedProviderIDs = Set(savedExpandedProviders.filter { registry.provider(id: $0) != nil })
-        } else {
-            expandedProviderIDs = []
-        }
-        // A metric added to the defaults since the user's last layout (auto-enabled above by
-        // `seedNewDefaultMetrics`) is brand new to them — so when it's a default-expanded metric, tuck it
-        // below the caret now instead of surfacing it above the fold. Without this, an existing layout's
-        // saved (or empty) expanded set never learns about the new metric and it lands always-shown. Only
-        // newly-placed ids qualify, so a metric the user already lived with is never silently hidden.
-        let newlyExpanded = Set(seededResult.newlyPlaced)
-            .intersection(defaultExpandedMetricIDs)
-            .filter { registry.descriptor(id: $0) != nil }
-        if !newlyExpanded.isSubset(of: expandedMetricIDs) {
-            expandedMetricIDs.formUnion(newlyExpanded)
-            shouldPersistExpanded = true
-        }
-
-        // A default-expanded metric that is neither already an expanded member nor placed enters below
-        // the caret the first time the user enables it. This queue is *persisted*, not recomputed each
-        // launch: a saved set is loaded as-is (only re-filtered for metrics that have since been placed
-        // or expanded), so a metric the user explicitly moved above the fold while disabled — which
-        // consumes its queue entry — stays above the fold after a relaunch instead of being resurrected.
-        // It's seeded once (no saved value yet) from the default-expanded metrics not already shown, which
-        // is what carries a legacy layout's optional metrics (e.g. `cursor.requests`) below the caret.
-        let placedIDs = Set(placed.map(\.descriptorID))
-        let expandedNow = expandedMetricIDs
-        let isExpandOnEnableCandidate: (String) -> Bool = { [registry] id in
-            registry.descriptor(id: id) != nil && !expandedNow.contains(id) && !placedIDs.contains(id)
-        }
-        if let savedOnEnable = persistence.loadExpandOnEnable() {
-            defaultExpandedOnEnableIDs = Set(savedOnEnable.filter(isExpandOnEnableCandidate))
-        } else {
-            defaultExpandedOnEnableIDs = Set(defaultExpandedMetricIDs.filter(isExpandOnEnableCandidate))
-            persistExpandOnEnable()
-        }
-
-        if shouldPersistExpanded { persistExpanded() }
-
-        if seededResult.shouldPersistSeededDefaults {
-            persistSeededDefaults(seededResult.seededDefaults)
-        }
-        syncPlacedOrder(persistChanges: seededResult.shouldPersistPlaced)
+        if initial.shouldPersistExpandOnEnable { persistExpandOnEnable() }
+        if initial.shouldPersistExpanded { persistExpanded() }
+        if let seededDefaults = initial.seededDefaultsToPersist { persistSeededDefaults(seededDefaults) }
+        syncPlacedOrder(persistChanges: initial.shouldPersistPlaced)
     }
 
     func provider(id: String) -> Provider? { registry.provider(id: id) }
@@ -819,7 +736,7 @@ final class LayoutStore {
             .map { PlacedWidget(descriptorID: $0) }
         providerOrder = registry.providers.map(\.id)
         persistProviderOrder()
-        metricOrderByProvider = Self.defaultMetricOrder(registry: registry)
+        metricOrderByProvider = LayoutOrdering.defaultMetricOrder(registry: registry)
         persistMetricOrder()
         pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         persistPins()
@@ -829,7 +746,7 @@ final class LayoutStore {
         persistExpandOnEnable()
         expandedProviderIDs = []
         persistExpandedProviders()
-        persistSeededDefaults(Set(Self.knownMetricIDs(defaultMetricIDs, registry: registry)))
+        persistSeededDefaults(Set(LayoutOrdering.knownMetricIDs(defaultMetricIDs, registry: registry)))
         persist()
     }
 
@@ -901,72 +818,10 @@ final class LayoutStore {
         persistence.saveSeededDefaults(ids)
     }
 
-    private struct SeededDefaultsResult {
-        let placed: [PlacedWidget]
-        let seededDefaults: Set<String>
-        let shouldPersistPlaced: Bool
-        let shouldPersistSeededDefaults: Bool
-        /// Metric ids newly auto-enabled this launch (a default added since the user's last layout).
-        /// Brand-new metrics the user never lived with, so a default-expanded one among them can be
-        /// tucked below the caret without the "don't silently hide a metric they already saw" concern.
-        let newlyPlaced: [String]
-    }
-
-    private static func seedNewDefaultMetrics(
-        into placed: [PlacedWidget],
-        persistence: LayoutPersistence,
-        hasStoredLayout: Bool,
-        registry: WidgetRegistry,
-        defaultMetricIDs: [String],
-        migrationBaselineMetricIDs: [String]
-    ) -> SeededDefaultsResult {
-        let knownDefaults = knownMetricIDs(defaultMetricIDs, registry: registry)
-        let knownDefaultSet = Set(knownDefaults)
-        let hasStoredSeededDefaults = persistence.hasStoredSeededDefaults
-
-        let seededDefaults: Set<String>
-        var shouldPersistSeededDefaults = false
-        if let saved = persistence.loadSeededDefaults() {
-            seededDefaults = Set(knownMetricIDs(saved, registry: registry))
-            shouldPersistSeededDefaults = seededDefaults != Set(saved)
-        } else if hasStoredLayout {
-            seededDefaults = Set(knownMetricIDs(migrationBaselineMetricIDs, registry: registry))
-            shouldPersistSeededDefaults = true
-        } else {
-            seededDefaults = knownDefaultSet
-            shouldPersistSeededDefaults = true
-        }
-
-        let placedIDs = Set(placed.map(\.descriptorID))
-        let toAdd = knownDefaults.filter { !seededDefaults.contains($0) && !placedIDs.contains($0) }
-        let nextPlaced = placed + toAdd.map { PlacedWidget(descriptorID: $0) }
-        let nextSeededDefaults = seededDefaults.union(knownDefaultSet)
-        shouldPersistSeededDefaults = shouldPersistSeededDefaults
-            || !hasStoredSeededDefaults
-            || nextSeededDefaults != seededDefaults
-
-        return SeededDefaultsResult(
-            placed: nextPlaced,
-            seededDefaults: nextSeededDefaults,
-            shouldPersistPlaced: !toAdd.isEmpty,
-            shouldPersistSeededDefaults: shouldPersistSeededDefaults,
-            newlyPlaced: toAdd
-        )
-    }
-
-    private static func knownMetricIDs(_ ids: [String], registry: WidgetRegistry) -> [String] {
-        var seen = Set<String>()
-        return ids.filter { id in
-            guard registry.descriptor(id: id) != nil, !seen.contains(id) else { return false }
-            seen.insert(id)
-            return true
-        }
-    }
-
     private func metricOrder(for providerID: String) -> [String] {
         let valid = registry.descriptors(for: providerID).map(\.id)
         let saved = metricOrderByProvider[providerID] ?? []
-        return Self.normalizedMetricIDs(saved, validIDs: valid)
+        return LayoutOrdering.normalizedMetricIDs(saved, validIDs: valid)
     }
 
     private func syncPlacedOrder(persistChanges: Bool = true) {
@@ -984,40 +839,6 @@ final class LayoutStore {
         if persistChanges { persist() }
     }
 
-    private static func defaultMetricOrder(registry: WidgetRegistry) -> [String: [String]] {
-        var result: [String: [String]] = [:]
-        for provider in registry.providers {
-            let valid = registry.descriptors(for: provider.id).map(\.id)
-            result[provider.id] = valid
-        }
-        return result
-    }
-
-    private static func normalizedMetricOrder(
-        _ saved: [String: [String]],
-        registry: WidgetRegistry
-    ) -> [String: [String]] {
-        var fallback = defaultMetricOrder(registry: registry)
-        for provider in registry.providers {
-            let valid = registry.descriptors(for: provider.id).map(\.id)
-            if let savedIDs = saved[provider.id] {
-                fallback[provider.id] = normalizedMetricIDs(savedIDs, validIDs: valid)
-            }
-        }
-        return fallback
-    }
-
-    private static func normalizedMetricIDs(_ saved: [String], validIDs: [String]) -> [String] {
-        let validSet = Set(validIDs)
-        var seen = Set<String>()
-        var ordered = saved.filter { id in
-            guard validSet.contains(id), !seen.contains(id) else { return false }
-            seen.insert(id)
-            return true
-        }
-        ordered.append(contentsOf: validIDs.filter { !seen.contains($0) })
-        return ordered
-    }
 }
 
 /// A provider and its placed (visible) widgets, split into the always-shown rows and the ones tucked
