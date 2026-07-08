@@ -144,21 +144,21 @@ struct DashboardView: View {
                     }
                 )
             )
-            .background(
-                PopoverVisibilityReader { visible in
-                    if visible {
-                        // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
-                        // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
-                        // there's no visible jump. If not yet measured, the measurement onChange seeds it.
-                        if let target = heightCoordinator.target(for: layout.screen) {
-                            didEstablishHeight = true
-                            animatedHeight = target
-                        }
-                    } else {
-                        resetTransientState()
+            // The controller already owns the exact show/hide moments. Reuse that signal here instead
+            // of asking AppKit window notifications to rediscover the same state a second time.
+            .onChange(of: transparency.popoverShown) { _, shown in
+                if shown {
+                    // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
+                    // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
+                    // there's no visible jump. If not yet measured, the measurement onChange seeds it.
+                    if let target = heightCoordinator.target(for: layout.screen) {
+                        didEstablishHeight = true
+                        animatedHeight = target
                     }
+                } else {
+                    resetTransientState()
                 }
-            )
+            }
             // A screen switch can tear the list down mid-drag, in which case the gesture's
             // `onEnded` never fires — clear the lift here or its overlay survives onto the new
             // screen.

@@ -363,10 +363,10 @@ final class StatusItemController: NSObject {
         // stray blue outline. Drop it on close so every reopen starts unfocused.
         clearStrayFocus()
         // Persist the closing screen's height NOW, while `container.layout.screen` is still the screen
-        // being shown (the visibility reset that flips it back to dashboard runs later, off the occlusion
-        // notification). `scheduleMorphSettle` only persists after 120ms of quiet and bails once the panel
-        // is hidden, so without this a close during a height change or screen switch would never save
-        // the new height and the next open of that screen would use a stale flash-free guess.
+        // being shown. The authoritative visibility signal below then tells SwiftUI to reset it to the
+        // dashboard. `scheduleMorphSettle` only persists after 120ms of quiet and bails once the panel is
+        // hidden, so without this a close during a height change or screen switch would never save the new
+        // height and the next open of that screen would use a stale flash-free guess.
         if panel.isVisible {
             PanelHeightStore.save(panel.frame.height, for: container.layout.screen)
         }

@@ -1,122 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// Reports whether the hosting menu-bar popover is actually present (ordered-on), so the dashboard can
-/// reset its transient UI state when the popover genuinely goes away.
-///
-/// Why this signal and not key/focus: the popover keeps its SwiftUI view tree alive across open/close,
-/// so transient UI state (edit mode, the add-widget gallery, scroll position) would otherwise persist
-/// and reopen "stuck". We need a signal for "the popover went away" that does NOT fire when the user
-/// merely clicks a control inside it. Key/resign-key fires on those clicks (breaking buttons), so it's
-/// out.
-///
-/// Why it reports `window.isVisible` rather than the occlusion state: a `.canJoinAllSpaces` panel that
-/// is open while the user switches macOS Spaces stays ordered-on (it follows them), but it is fully
-/// *occluded* during the Space transition, so `occlusionState` drops `.visible` and then regains it.
-/// Reporting occlusion directly mistook that for a dismissal and reset the still-open popover mid-switch
-/// — which blanked the scroll content (the reset scrolls to top, drops the driven height, and resets the
-/// screen) while the pinned chrome and the egg's gradient, living outside that subtree, kept rendering.
-/// `isVisible` is true the whole time the panel is ordered-on (across Space switches and partial
-/// occlusion) and flips to false only on a real `orderOut`, which is exactly the reset moment. Two
-/// notifications wake the read — occlusion (open, close, Space switches) and the window becoming key
-/// (every `makeKeyAndOrderFront`, which is the one that catches the *first* show; see `VisibilityView`)
-/// — but the *value* reported is always `isVisible`, so a Space switch never reads as "gone".
-struct PopoverVisibilityReader: NSViewRepresentable {
-    var onChange: (Bool) -> Void
-
-    /// What wakes the `isVisible` read. Occlusion alone misses the first show (a freshly-created panel's
-    /// `occlusionState` already contains `.visible`, so the first `makeKeyAndOrderFront` posts no change),
-    /// so becoming key — which every open fires — is observed too. Both stay present so the first show is
-    /// reported like any other open (it drives the transient-state reset on close and the reopen height
-    /// re-seed); a test guards that both triggers remain wired.
-    static let visibilityTriggers: [NSNotification.Name] = [
-        NSWindow.didChangeOcclusionStateNotification,
-        NSWindow.didBecomeKeyNotification
-    ]
-
-    /// Whether a visibility report should be delivered to `onChange`, given the value being reported and
-    /// the last delivered value. A `false` before any `true` (`lastVisible == nil`) is **not** a dismissal
-    /// — the popover was never shown, so there is nothing transient to reset — and is suppressed: the
-    /// reader mounts into the not-yet-ordered-front panel during `showPanel`'s pre-show layout, where
-    /// `isVisible` is still false, and delivering it would run the consumer's `resetTransientState` and
-    /// clobber a screen `openSettings` pre-set before showing. A real `orderOut` always arrives as a
-    /// `false` *after* a `true` (via the occlusion notification while the view is still in its window), so
-    /// genuine dismissals are unaffected. This suppression is deliberate — do not "fix" it to deliver the
-    /// initial `false`.
-    ///
-    /// `nonisolated static` so tests exercise it without a window or a MainActor hop (cf. the sibling
-    /// `PopoverKeyReader.keyTargetsPopover`).
-    nonisolated static func shouldDeliver(_ visible: Bool, lastVisible: Bool?) -> Bool {
-        guard let lastVisible else { return visible }   // first report: deliver only a `true`
-        return lastVisible != visible                   // otherwise deliver real changes
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = VisibilityView()
-        view.onChange = onChange
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? VisibilityView)?.onChange = onChange
-    }
-
-    final class VisibilityView: NSView {
-        var onChange: ((Bool) -> Void)?
-        private var observers: [NSObjectProtocol] = []
-        private var lastVisible: Bool?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            observers.forEach(NotificationCenter.default.removeObserver)
-            observers.removeAll()
-            guard let window else {
-                // Detaching from the window is not a dismissal: the panel is retained on close
-                // (`isReleasedWhenClosed = false`) and this reader is a permanent root-level `.background`,
-                // so this fires only on real teardown, never on a popover close. A genuine `orderOut` is
-                // already caught by the occlusion observer while the view is still in its window, so don't
-                // report `false` here — doing so could reset a still-on-screen popover.
-                return
-            }
-            // Two triggers, because neither alone catches every transition. The value reported is always
-            // `window.isVisible` (true whenever the panel is ordered-on, false only on a real `orderOut`);
-            // `isVisible` itself isn't KVO-compliant, so these notifications are the wake-up.
-            //
-            // - Occlusion fires on close, Space switches, and being covered — but NOT on the very first
-            //   show: a freshly-created panel's `occlusionState` already contains `.visible`, so the first
-            //   `makeKeyAndOrderFront` posts no *change*. Relying on it alone would leave the first show
-            //   unreported (the popover stuck at its launch-time `isVisible == false`), so the open-side
-            //   height re-seed wouldn't run on the very first open.
-            // - Becoming key fires on every `makeKeyAndOrderFront`, and every open goes through one, so it
-            //   reliably catches that first show. We observe become-key but deliberately NOT resign-key: a
-            //   panel that resigns key (a click in another app, a tracking menu) is still ordered-on and
-            //   visible, and resign-key also fires on in-popover control clicks — the exact reason this
-            //   reader avoids key/focus for its value. Reporting only `true` here can't misfire a
-            //   dismissal (that rides a `false` from `orderOut`); it just fills the gap occlusion leaves.
-            for name in PopoverVisibilityReader.visibilityTriggers {
-                observers.append(NotificationCenter.default.addObserver(
-                    forName: name,
-                    object: window,
-                    queue: .main
-                ) { [weak self, weak window] _ in
-                    MainActor.assumeIsolated {
-                        self?.report(window?.isVisible ?? false)
-                    }
-                })
-            }
-            report(window.isVisible)
-        }
-
-        private func report(_ visible: Bool) {
-            // Compute from the prior value, then seed, then deliver — so a suppressed first `false`
-            // still updates `lastVisible` (next real change is detected) without firing `onChange`.
-            let deliver = PopoverVisibilityReader.shouldDeliver(visible, lastVisible: lastVisible)
-            lastVisible = visible
-            if deliver { onChange?(visible) }
-        }
-    }
-}
-
 /// Handles the popover's two bare navigation keys via a local key monitor. SwiftUI
 /// `.keyboardShortcut` is unreliable here — a hidden/zero-size shortcut button never registers, and
 /// even a visible default button only fires when the popover is the key window — so the popover's
@@ -125,8 +9,8 @@ struct PopoverVisibilityReader: NSViewRepresentable {
 ///
 /// - **Esc**: `onEscape` gets first refusal (e.g. backing out of Customize); when it declines, the
 ///   popover is dismissed through `MenuBarPopover.dismiss`, the same path a status-item click takes
-///   — so it stays in sync, reopens in one click, and trips the visibility reset (cancelling edit
-///   mode + the jiggle).
+///   — so it stays in sync, reopens in one click, and trips the controller's visibility reset
+///   (cancelling edit mode + the jiggle).
 /// - **Return**: `onReturn` opens/closes Customize (the same affordance the footer's Customize
 ///   button carries). Consuming the key here is also what stops a bare
 ///   Return from falling through and dismissing the popover.
