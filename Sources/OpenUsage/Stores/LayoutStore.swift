@@ -572,40 +572,6 @@ final class LayoutStore {
         return true
     }
 
-    /// Move a metric across the "Shown on expand" divider without a drag. Moving into the expanded
-    /// section parks it as the first expanded metric; moving back parks it as the last always-shown
-    /// metric, so the stored order stays grouped the way it renders. Returns whether anything changed.
-    /// (Customize now moves metrics via `applyMetricDividerOrder`/`reorderMetric`; this direct toggle is
-    /// retained as the concise expand-state mutator the tests drive and for a future per-row control.)
-    @discardableResult
-    func setMetricExpanded(_ descriptorID: String, _ expanded: Bool) -> Bool {
-        recordingUndoStep { setMetricExpandedImpl(descriptorID, expanded) }
-    }
-
-    private func setMetricExpandedImpl(_ descriptorID: String, _ expanded: Bool) -> Bool {
-        guard let providerID = registry.descriptor(id: descriptorID)?.providerID else { return false }
-        guard expandedMetricIDs.contains(descriptorID) != expanded else { return false }
-        if defaultExpandedOnEnableIDs.remove(descriptorID) != nil { persistExpandOnEnable() }
-
-        let ordered = metricOrder(for: providerID)
-        guard ordered.contains(descriptorID) else { return false }
-
-        if expanded {
-            expandedMetricIDs.insert(descriptorID)
-        } else {
-            expandedMetricIDs.remove(descriptorID)
-        }
-        // Reinsert the moved metric right at the divider — last always-shown going up, first expanded
-        // going down — which is the same position in the combined sequence either way.
-        let alwaysShown = ordered.filter { $0 != descriptorID && !expandedMetricIDs.contains($0) }
-        let expandedIDs = ordered.filter { $0 != descriptorID && expandedMetricIDs.contains($0) }
-        metricOrderByProvider[providerID] = alwaysShown + [descriptorID] + expandedIDs
-        persistMetricOrder()
-        persistExpanded()
-        syncPlacedOrder()
-        return true
-    }
-
     /// Apply a provider metric order that includes one visual divider sentinel. Metrics before the
     /// sentinel become always-shown; metrics after it become shown-on-expand. This is the clean drag
     /// model for Customize: the divider participates in target geometry like a row, but persistence
