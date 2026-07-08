@@ -38,15 +38,14 @@ final class PanelHeightController {
         }
     }
 
-    /// Invalidates height frames left over from the previous open before SwiftUI lays out this one.
-    func beginOpening() {
+    /// Clears the previous session, captures the display, and opens at the remembered guess. This must
+    /// happen before SwiftUI sees the popover as shown, because that signal immediately asks the clamp
+    /// hook for this display's real maximum height.
+    func prepareForOpening(below buttonRect: NSRect) {
         morphSettleTask?.cancel()
         isMorphing = false
         PanelHeightBridge.invalidate()
-    }
 
-    /// Captures the display and top-left anchor, then opens at the remembered height for this screen.
-    func positionForOpening(below buttonRect: NSRect) {
         let screen = NSScreen.screens.first { $0.frame.intersects(buttonRect) } ?? NSScreen.main
         anchorScreen = screen
         let topLeft = PanelGeometry.clampedTopLeft(
