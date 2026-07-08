@@ -343,7 +343,18 @@ struct DashboardView: View {
             }
             .softTopScrollEdge()
             .softBottomScrollEdge()
-            .pinnedTopBar(spacing: 0) { fixedTopBar }
+            .pinnedTopBar(spacing: 0) {
+                PopoverTopBar(
+                    layout: layout,
+                    height: Self.topBarHeight,
+                    horizontalPadding: Self.footerHorizontalPadding,
+                    onResetAll: {
+                        layout.resetToDefault()
+                        container.reseedEnabledProviders()
+                    },
+                    isPresentingResetAllConfirm: $isPresentingResetAllConfirm
+                )
+            }
             .pinnedFooter(spacing: 0) { footerBar(for: layout.screen) }
     }
 
@@ -371,151 +382,6 @@ struct DashboardView: View {
         case .settings:
             SettingsScreen()
         }
-    }
-
-    /// The fixed top back/title bar, keyed off `layout.screen` so it's identical on both slide pages
-    /// (no horizontal travel): the back nav bar on Customize/Settings, nothing on the dashboard. The
-    /// bar pins itself to `topBarHeight`; the dashboard shows nothing here.
-    @ViewBuilder
-    private var fixedTopBar: some View {
-        switch layout.screen {
-        case .dashboard:
-            EmptyView()
-        case .customize:
-            // L2 (provider detail) shows a per-provider reset button; L1 (the list) carries the
-            // "reset all customization" button in the same trailing slot. Title swaps to the provider
-            // name on L2; back is context-aware (L2 → L1, L1 → dashboard).
-            if let id = layout.customizeProviderID {
-                navBar(title: customizeTitle, back: customizeBack) {
-                    resetButton(for: id)
-                }
-            } else {
-                navBar(title: customizeTitle, back: customizeBack) {
-                    resetAllButton()
-                }
-                .alert("Reset All Customization?", isPresented: $isPresentingResetAllConfirm) {
-                    Button("Reset All", role: .destructive) {
-                        withAnimation(Motion.spring) {
-                            layout.resetToDefault()
-                            container.reseedEnabledProviders()
-                        }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Turns providers back on for the tools you have installed and resets every provider's metrics and order. Are you sure?")
-                }
-            }
-        case .settings:
-            navBar(title: "Settings") {
-                withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
-            } trailing: {
-                EmptyView()
-            }
-        }
-    }
-
-    /// The Customize top-bar title: the provider's name when its L2 detail is open, otherwise "Customize".
-    private var customizeTitle: String {
-        layout.customizeProviderID.flatMap { layout.provider(id: $0)?.displayName } ?? "Customize"
-    }
-
-    /// Customize's context-aware back: L2 → L1 (the slide), L1 → dashboard (the usual screen slide).
-    private func customizeBack() {
-        if layout.customizeProviderID != nil {
-            withAnimation(Motion.spring) { layout.customizeProviderID = nil }
-        } else {
-            withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
-        }
-    }
-
-    // MARK: - Pinned top nav bar
-
-    /// The back nav bar pinned above Customize and Settings — the macOS-native place for a back
-    /// affordance (top-leading), replacing the old trailing footer "Done" button. It's fixed chrome:
-    /// applied uniformly in `screenView` via `pinnedTopBar` and keyed off `layout.screen` (see
-    /// `fixedTopBar`), so it doesn't slide with the pages — it appears in place when entering
-    /// Customize/Settings and clears on the dashboard, while the content slides beneath it. Its
-    /// `barGlass()` (Liquid Glass) background lenses the content scrolling under it — the same
-    /// content-aware glass as the footer.
-    private func navBar<Trailing: View>(title: String, back: @escaping () -> Void, @ViewBuilder trailing: () -> Trailing) -> some View {
-        // Centered title with the back control floating leading and a trailing action — the macOS
-        // toolbar convention (leading navigation · centered title · trailing actions). The title is
-        // centered against the *full* bar width (a ZStack layer, not an HStack slot) so it stays
-        // optically centered regardless of the leading/trailing control widths.
-        ZStack {
-            Text(title)
-                .font(.headline)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-
-            HStack(spacing: 0) {
-                backButton(action: back)
-                Spacer(minLength: 8)
-                trailing()
-            }
-        }
-        .padding(.horizontal, Self.footerHorizontalPadding)
-        .frame(height: Self.topBarHeight)
-        .frame(maxWidth: .infinity)
-        // Same content-aware Liquid Glass as the footer (`barGlass`) — the matching top/bottom chrome.
-        .barGlass()
-    }
-
-    /// The round glass back button (chevron leading), matching the footer's glass control idiom. Esc
-    /// and the system shortcuts back out too; this is the visible, expected affordance. The action is
-    /// supplied by the caller so Customize can back L2 → L1 before L1 → dashboard.
-    private func backButton(action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label("Back", systemImage: "chevron.backward")
-                .labelStyle(.iconOnly)
-                .frame(width: 16, height: 16)
-        }
-        .glassButtonStyle()
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .hoverTooltip("Back")
-        .accessibilityLabel("Back")
-    }
-
-    /// The trailing reset button on a provider's L2 detail — a circular glass control mirroring the
-    /// leading back chevron. Resets just that provider's metrics, order, stars, and On Demand
-    /// membership (`resetProvider`), leaving other providers and the provider order untouched. Only
-    /// shown on L2; the L1 list has no trailing action.
-    private func resetButton(for providerID: String) -> some View {
-        Button {
-            withAnimation(Motion.spring) { layout.resetProvider(providerID) }
-        } label: {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 16, height: 16)
-                .contentShape(Rectangle())
-        }
-        .glassButtonStyle()
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .hoverTooltip("Reset \(layout.provider(id: providerID)?.displayName ?? providerID)")
-        .accessibilityLabel("Reset")
-    }
-
-    /// The trailing "reset all customization" button on the L1 Customize list — the all-providers
-    /// counterpart to `resetButton`. Same circular glass idiom and reset icon; the scope (everything
-    /// vs. one provider) is conveyed by the tooltip and the confirmation sheet it opens. The sheet
-    /// (`isPresentingResetAllConfirm`) is a real macOS alert, so a destructive "Reset All" is a
-    /// deliberate two-step action — never a single mis-click that wipes the whole layout.
-    private func resetAllButton() -> some View {
-        Button {
-            isPresentingResetAllConfirm = true
-        } label: {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 16, height: 16)
-                .contentShape(Rectangle())
-        }
-        .glassButtonStyle()
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .hoverTooltip("Reset All Customization")
-        .accessibilityLabel("Reset All Customization")
     }
 
     // MARK: - Pinned footer
