@@ -86,25 +86,7 @@ enum ShareCardRenderer {
             appearance: appearance,
             expandBoundaryIndex: isExpanded ? alwaysRows.count : nil
         )
-        let densityKey = DensitySetting.key
-        let savedDensity = UserDefaults.standard.string(forKey: densityKey)
-        UserDefaults.standard.set(DensitySetting.regular.rawValue, forKey: densityKey)
-        defer {
-            if let savedDensity {
-                UserDefaults.standard.set(savedDensity, forKey: densityKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: densityKey)
-            }
-        }
-        guard let image = image(for: view) else {
-            AppLog.error(.lifecycle, "share card: ImageRenderer produced no image for \(group.provider.id)")
-            NSSound.beep()
-            return
-        }
-        // Only surface the "Copied to clipboard" pill when the PNG actually landed on the pasteboard —
-        // a failed encode or a pasteboard rejection must not read as success.
-        guard copyToPasteboard(image) else { return }
-        layout.presentShareConfirmation()
+        renderAndCopy(view, label: group.provider.id, layout: layout)
     }
 
     /// The Total Spend counterpart to `share(group:…)`: renders the aggregate ring card for the
@@ -124,6 +106,17 @@ enum ShareCardRenderer {
             return false
         }
         let view = TotalSpendShareCardView(total: total, appearance: appearance)
+        return renderAndCopy(view, label: "total spend", layout: layout)
+    }
+
+    /// Shared render→copy pipeline for both share actions. Pins the render to regular density (the rows
+    /// read density via `@AppStorage`, so the saved value is swapped to `.regular` for the render and
+    /// restored on exit) so the export ignores the user's popover density slider; rasterizes `view`;
+    /// copies the PNG; and on a successful copy surfaces the transient "Copied to clipboard" pill (a
+    /// clipboard write gives no other signal). Beeps and logs (naming the card with `label`) on failure,
+    /// so a failed export is never silently swallowed. Returns whether the PNG landed on the pasteboard.
+    @discardableResult
+    private static func renderAndCopy<Card: View>(_ view: Card, label: String, layout: LayoutStore) -> Bool {
         let densityKey = DensitySetting.key
         let savedDensity = UserDefaults.standard.string(forKey: densityKey)
         UserDefaults.standard.set(DensitySetting.regular.rawValue, forKey: densityKey)
@@ -135,7 +128,7 @@ enum ShareCardRenderer {
             }
         }
         guard let image = image(for: view) else {
-            AppLog.error(.lifecycle, "share card: ImageRenderer produced no image for total spend")
+            AppLog.error(.lifecycle, "share card: ImageRenderer produced no image for \(label)")
             NSSound.beep()
             return false
         }

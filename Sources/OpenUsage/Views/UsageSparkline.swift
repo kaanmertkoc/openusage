@@ -11,7 +11,7 @@ struct UsageSparkline: View {
     private let points: [MetricChartPoint]
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-    @State private var hover = TrendHoverState()
+    @State private var hover = HoverPopoverState()
 
     /// Widest the bar strip grows to, and a floor so it can't collapse to a sliver next to a long title.
     private static let maxChartWidth: CGFloat = 150

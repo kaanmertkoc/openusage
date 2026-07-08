@@ -74,6 +74,14 @@ struct WidgetData: Hashable {
     /// they leave this false and never get the "No usage in this period" note. Set by the spend-tile
     /// factory; rides the descriptor sample through `WidgetDataStore.resolve`.
     var isUsagePeriod: Bool = false
+    /// A tray-only unit word appended after this tile's menu-bar value for an unbounded count (e.g. Codex
+    /// Rate Limit Resets → "2 resets"). Set by the descriptor, so renaming the tile can't silently drop
+    /// the suffix — replaces matching on the tile's title. `nil` for tiles that show the bare value.
+    var traySuffix: String?
+    /// Session-window meters (Codex/Claude/Antigravity 5-hour pools) that read "Not started" when unused.
+    /// Set by those descriptors and carried through `WidgetDataStore.resolve`, so the "fresh window"
+    /// treatment is a descriptor opt-in rather than a hardcoded widget-ID list in the model.
+    var isSessionWindow: Bool = false
     /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the
     /// row so the view draws the sparkline instead of the value layout; `chartNote` is the source line
     /// shown on hover (e.g. "From your Claude usage history (estimated)").
@@ -233,8 +241,8 @@ struct WidgetData: Hashable {
             return MetricFormatter.number(displayedValue, kind: kind, style: .tray)
         }
         if let first = selectedValues.first {
-            if title == "Rate Limit Resets", first.kind == .count {
-                return "\(MetricFormatter.number(first.number, kind: .count, style: .tray)) resets"
+            if let traySuffix, first.kind == .count {
+                return "\(MetricFormatter.number(first.number, kind: .count, style: .tray)) \(traySuffix)"
             }
             return MetricFormatter.string(for: first, style: .tray)
         }
@@ -412,11 +420,6 @@ struct WidgetData: Hashable {
         return nil
     }
 
-    /// Labels do not carry hover affordances; tests pin that behavior.
-    var unboundedLabelTooltip: String? {
-        nil
-    }
-
     private var unboundedTooltipNote: String? {
         infoNote ?? valueTooltipNote
     }
@@ -561,19 +564,9 @@ extension WidgetData {
     /// Still gated on `now < resetsAt`: once the reset has passed the snapshot is stale, so we drop the
     /// "Not started" claim and let the row fall back to the normal "Resets soon"/countdown formatting.
     func isFreshSessionWindow(now: Date = Date()) -> Bool {
-        guard let id = widgetID, Self.sessionWindowWidgetIDs.contains(id),
-              hasData, limit != nil, let resetsAt, used <= 0 else { return false }
+        guard isSessionWindow, hasData, limit != nil, let resetsAt, used <= 0 else { return false }
         return now < resetsAt
     }
-
-    private static let sessionWindowWidgetIDs: Set<String> = [
-        "codex.session", "claude.session",
-        // Antigravity's two pool meters are rolling 5-hour windows too: an unused pool reports
-        // `used == 0` with a reset a full period out, so it gets the same "Not started" treatment.
-        // The weekly meters deliberately aren't listed — like Claude/Codex, only session windows
-        // read "Not started".
-        "antigravity.geminiPro", "antigravity.claude"
-    ]
 
     /// True when the bounded primary row's trailing text is a concrete reset countdown (so the row makes
     /// it the clickable toggle). False for limit/suffix context, fresh session windows, or no reset date.
@@ -609,5 +602,20 @@ extension WidgetData {
         let opposite = displayMode == .remaining ? used : max(0, limit - used)
         let word = (displayMode == .remaining ? WidgetDisplayMode.used : .remaining).label.lowercased()
         return "\((valuePrefix ?? "") + format(opposite)) \(word)"
+    }
+}
+
+extension WidgetData {
+    /// The neighbor-aware condensing rule, in one place: within a single run of rows (a run never spans
+    /// the expand caret — callers segment at that boundary and scan each segment separately), the offsets
+    /// of text-only rows that sit directly under another text-only row. A text-only row has no meter fill
+    /// (`!isBounded`); a run of them (Today / Yesterday / Last 30 Days) pulls up into one cluster. The
+    /// dashboard maps these offsets back to descriptor IDs; the share-card export maps them to flat indices.
+    static func condensedTextRowOffsets(in rows: [WidgetData]) -> Set<Int> {
+        var offsets = Set<Int>()
+        for index in rows.indices.dropFirst() where !rows[index - 1].isBounded && !rows[index].isBounded {
+            offsets.insert(index)
+        }
+        return offsets
     }
 }

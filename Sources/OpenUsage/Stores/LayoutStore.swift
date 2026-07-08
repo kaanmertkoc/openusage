@@ -424,10 +424,6 @@ final class LayoutStore {
             + ordered.filter { expandedMetricIDs.contains($0) }
     }
 
-    func isMetricExpanded(_ descriptorID: String) -> Bool {
-        expandedMetricIDs.contains(descriptorID)
-    }
-
     func isProviderExpanded(_ providerID: String) -> Bool {
         expandedProviderIDs.contains(providerID)
     }
@@ -602,10 +598,11 @@ final class LayoutStore {
         return true
     }
 
-    /// Move a metric across the "Shown on expand" divider without a drag — the per-row control in
-    /// Customize. Moving into the expanded section parks it as the first expanded metric; moving back
-    /// parks it as the last always-shown metric, so the stored order stays grouped the way it renders.
-    /// Returns whether anything changed.
+    /// Move a metric across the "Shown on expand" divider without a drag. Moving into the expanded
+    /// section parks it as the first expanded metric; moving back parks it as the last always-shown
+    /// metric, so the stored order stays grouped the way it renders. Returns whether anything changed.
+    /// (Customize now moves metrics via `applyMetricDividerOrder`/`reorderMetric`; this direct toggle is
+    /// retained as the concise expand-state mutator the tests drive and for a future per-row control.)
     @discardableResult
     func setMetricExpanded(_ descriptorID: String, _ expanded: Bool) -> Bool {
         recordingUndoStep { setMetricExpandedImpl(descriptorID, expanded) }
@@ -881,11 +878,6 @@ final class LayoutStore {
                 expandedMetrics: metrics.filter { expandedMetricIDs.contains($0.id) }
             )
         }
-    }
-
-    /// Flattened pinned descriptor ids in display order.
-    var pinnedDescriptorIDsInOrder: [String] {
-        pinnedGroups.flatMap { $0.metrics.map(\.id) }
     }
 
     private func persistPins() {

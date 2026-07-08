@@ -40,7 +40,6 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(data.valueText, "58%")
         XCTAssertEqual(data.boundedHeadline, "58% left")
         XCTAssertEqual(data.boundedSubtitle?.hasPrefix("Resets in "), true)
-        XCTAssertEqual(store.menuBarPrimaryText, "58%")
     }
 
     func testSoftWarningSurfacesOnHeaderWhilePartialDataStillLoads() async {
@@ -273,7 +272,8 @@ final class WidgetDataStoreTests: XCTestCase {
             id: "codex.rateLimitResets",
             provider: provider,
             title: "Rate Limit Resets",
-            metricLabel: "Rate Limit Resets"
+            metricLabel: "Rate Limit Resets",
+            traySuffix: "resets"
         )
         let runtime = TestProviderRuntime(
             provider: provider,
@@ -500,14 +500,11 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(combinedData.unboundedTooltip, "$478.00 · 891,000 tokens")
         XCTAssertEqual(combinedData.infoNote, WidgetData.localEstimateNote)
 
-        // Labels are inert. The value hover carries exact figures plus the source note.
-        XCTAssertNil(combinedData.unboundedLabelTooltip)
+        // The value hover carries exact figures plus the source note.
         XCTAssertEqual(combinedData.unboundedValueTooltip, "$478.00 · 891,000 tokens\n\(WidgetData.localEstimateNote)")
-        XCTAssertNil(costData.unboundedLabelTooltip)
         XCTAssertEqual(costData.unboundedValueTooltip, "$478.00\n\(WidgetData.localEstimateNote)")
         // The measured tokens tile has no source note, so it has only the exact-number value hover.
         XCTAssertNil(tokenData.infoNote)
-        XCTAssertNil(tokenData.unboundedLabelTooltip)
         XCTAssertEqual(tokenData.unboundedValueTooltip, "891,000 tokens")
 
         // An unpriced day (real tokens, no dollar): the cost-only tile finds no dollar value, so it reads
@@ -540,7 +537,6 @@ final class WidgetDataStoreTests: XCTestCase {
         let data = store.data(for: combined)
         XCTAssertEqual(data.unboundedDetail, "$15.80 · 8.1B tokens")
         XCTAssertNil(data.infoNote)
-        XCTAssertNil(data.unboundedLabelTooltip)
         XCTAssertEqual(data.unboundedValueTooltip, "$15.80 · 8,100,000,000 tokens\n\(WidgetData.cursorUsageHistoryNote)")
     }
 

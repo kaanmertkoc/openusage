@@ -5,16 +5,19 @@ import Foundation
 /// same private builders. Sample numbers are structural only (a row without real data renders the
 /// no-data marker, never the sample), so every factory seeds `used: 0`.
 extension WidgetDescriptor {
-    /// Bounded 0–100% meter (session/weekly-style quotas).
+    /// Bounded 0–100% meter (session/weekly-style quotas). `isSessionWindow` opts the tile into the
+    /// "Not started" fresh-window treatment (rolling 5-hour session pools), replacing a hardcoded
+    /// widget-ID list in the model.
     static func percent(
         id: String,
         provider: Provider,
         title: String,
-        metricLabel: String? = nil
+        metricLabel: String? = nil,
+        isSessionWindow: Bool = false
     ) -> WidgetDescriptor {
-        make(id: id, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, icon: provider.icon,
-                                kind: .percent, used: 0, limit: 100))
+        var sample = WidgetData(title: title, icon: provider.icon, kind: .percent, used: 0, limit: 100)
+        sample.isSessionWindow = isSessionWindow
+        return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 
     /// Bounded dollar meter whose subtitle reads "$<limit> <limitNoun>" (noun defaults to "limit").
@@ -64,7 +67,8 @@ extension WidgetDescriptor {
         metricLabel: String? = nil,
         selection: ValueSelection = .all,
         valueWord: String? = nil,
-        isUsagePeriod: Bool = false
+        isUsagePeriod: Bool = false,
+        traySuffix: String? = nil
     ) -> WidgetDescriptor {
         // `kind` is unused for `.values` rendering (each value carries its own), but a count-only tile
         // reads tidier seeded as `.count`; everything else defaults to `.dollars`.
@@ -73,6 +77,7 @@ extension WidgetDescriptor {
                                 unboundedValueWord: valueWord)
         sample.selection = selection
         sample.isUsagePeriod = isUsagePeriod
+        sample.traySuffix = traySuffix
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 

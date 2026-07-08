@@ -391,8 +391,7 @@ final class StatusItemController: NSObject {
         // no hover-exit and would orphan on screen — clear it here, the one chokepoint every close hits.
         // The Usage Trend hover popover is on the same survives-orderOut footing, so dismiss it too.
         HoverTooltips.dismissAll()
-        TrendHoverState.dismissAll()
-        ModelHoverState.dismissAll()
+        HoverPopoverState.dismissAll()
         // Same survival problem for keyboard focus: a clicked plain-styled control (a row's Used/Left
         // or reset toggle) stays first responder, so its focus ring would reopen with the popover as a
         // stray blue outline. Drop it on close so every reopen starts unfocused.
@@ -557,18 +556,12 @@ final class StatusItemController: NSObject {
             let screenPoint = NSEvent.mouseLocation
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                // While the panel is morphing its height, its frame is moving under a possibly
-                // stationary cursor — don't let a click land "outside" a frame that's mid-resize.
-                guard !self.isMorphing else { return }
-                // A sheet is attached to the panel (e.g. the Customize "Reset All Customization"
-                // confirmation alert). A click in another app would otherwise close the popover out
-                // from under the alert — keep the panel open for the sheet's lifetime.
-                guard self.panel.attachedSheet == nil else { return }
-                // Clicking the status item must NOT dismiss here — its own action toggles the panel.
-                // Dismissing on this click's mouse-down would close the panel, then the button action
-                // would reopen it on mouse-up (the close-then-reopen flicker).
-                guard !self.isOnStatusButton(screenPoint: screenPoint),
-                      !self.panel.frame.contains(screenPoint) else { return }
+                // A global monitor only fires for clicks in OTHER apps, so there's no in-process window
+                // to identify — the shared keep-open policy decides on position alone (mid-morph frame,
+                // an attached sheet, the status button, or the panel frame). Passing nil window info is
+                // the accurate input, and reusing `shouldKeepPanelOpen` keeps the two monitors in step.
+                guard !self.shouldKeepPanelOpen(windowID: nil, windowTypeName: nil, screenPoint: screenPoint)
+                else { return }
                 self.hidePanel()
             }
         }) {

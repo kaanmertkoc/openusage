@@ -175,21 +175,17 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     }
 
     func writeGenericPassword(service: String, value: String) throws {
-        let result = try processRunner.run(
-            executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-U", "-s", service, "-w", value],
-            environment: [:],
-            timeout: 5
-        )
-        if !result.succeeded {
-            throw KeychainError.writeFailed(result.stderr)
-        }
+        try writePassword(["add-generic-password", "-U", "-s", service, "-w", value])
     }
 
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws {
+        try writePassword(["add-generic-password", "-U", "-a", currentUserAccount(), "-s", service, "-w", value])
+    }
+
+    private func writePassword(_ arguments: [String]) throws {
         let result = try processRunner.run(
             executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-U", "-a", currentUserAccount(), "-s", service, "-w", value],
+            arguments: arguments,
             environment: [:],
             timeout: 5
         )

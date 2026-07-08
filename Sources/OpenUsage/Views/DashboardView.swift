@@ -255,8 +255,7 @@ struct DashboardView: View {
         // tooltip the cursor was resting on, since the closed popover fires no hover-exit. The Usage
         // Trend hover popover rides the same backstop.
         HoverTooltips.dismissAll()
-        TrendHoverState.dismissAll()
-        ModelHoverState.dismissAll()
+        HoverPopoverState.dismissAll()
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()
@@ -663,20 +662,12 @@ struct DashboardView: View {
     /// screenshot is copied — a small frosted capsule that reads as a transient success toast. `.id` on
     /// the trigger so a repeat copy of the same provider re-pops instead of sitting motionless.
     private var shareCopiedPill: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 11, weight: .semibold))
-            Text("Copied to clipboard")
-                .font(.system(size: 12, weight: .semibold))
-        }
-        .foregroundStyle(Theme.positive)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
-        .id(layout.shareConfirmationTrigger)
-        .transition(.scale(scale: 0.85).combined(with: .opacity))
+        TransientPill(
+            systemImage: "checkmark.circle.fill",
+            text: "Copied to clipboard",
+            tint: Theme.positive,
+            trigger: layout.shareConfirmationTrigger
+        )
     }
 
     /// Count of enabled ("active") metrics across providers — the "N active" half of the Customize footer

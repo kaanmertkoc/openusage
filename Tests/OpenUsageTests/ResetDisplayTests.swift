@@ -56,6 +56,7 @@ final class ResetDisplayTests: XCTestCase {
                    "antigravity.geminiPro", "antigravity.claude"] {
             var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
             data.widgetID = id
+            data.isSessionWindow = true   // descriptor opt-in the session tiles now carry
             data.periodDurationMs = Int(period * 1000)
             // Half the window has elapsed on the clock, so pace would otherwise project — but usage is
             // still zero, which is what "Not started" keys off (see `isFreshSessionWindow`).
@@ -71,6 +72,27 @@ final class ResetDisplayTests: XCTestCase {
             XCTAssertNil(state.tooltip, id)
             XCTAssertNil(data.paceTick(for: state, now: now), id)
         }
+    }
+
+    @MainActor
+    func testSessionWindowFlagIsWiredOnExactlyTheShippingSessionDescriptors() {
+        // The test above hand-sets `isSessionWindow`, so it pins the mechanism but not the wiring.
+        // This one pins the wiring: the descriptor opt-in replaced a model-level widget-ID set, so a
+        // provider dropping (or spuriously gaining) the flag must fail here, not ship silently.
+        let providers: [ProviderRuntime] = [
+            ClaudeProvider(), CodexProvider(), CursorProvider(),
+            AntigravityProvider(), CopilotProvider(), DevinProvider(),
+            GrokProvider(), OpenRouterProvider(), ZAIProvider()
+        ]
+        let descriptors = providers.flatMap(\.widgetDescriptors)
+        let sessionIDs = Set(descriptors.filter(\.sample.isSessionWindow).map(\.id))
+        XCTAssertEqual(sessionIDs, ["codex.session", "claude.session",
+                                    "antigravity.geminiPro", "antigravity.claude"])
+
+        // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
+        let suffixed = descriptors.filter { $0.sample.traySuffix != nil }
+        XCTAssertEqual(suffixed.map(\.id), ["codex.rateLimitResets"])
+        XCTAssertEqual(suffixed.first?.sample.traySuffix, "resets")
     }
 
     func testAntigravityWeeklyRowsNeverReadNotStarted() {

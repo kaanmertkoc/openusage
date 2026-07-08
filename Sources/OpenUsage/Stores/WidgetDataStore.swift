@@ -471,23 +471,6 @@ final class WidgetDataStore {
         return StalenessHint(label: "Outdated", tooltip: "Last updated \(duration) ago")
     }
 
-    var menuBarPrimaryText: String {
-        // The tray mirrors the user's widget order: the first placed, enabled tile that has real data
-        // drives it, skipping any no-data tile so it never shows a missing metric's placeholder. When
-        // nothing has real data yet, it shows the no-data marker ("—") beside the tray icon — never a
-        // fabricated amount.
-        let primary = orderedDescriptors()
-            .filter { isProviderEnabled($0.providerID) }
-            .lazy
-            .map { self.data(for: $0) }
-            // A chart tile has data but no scalar value, so it would read "0" here — skip it, the same
-            // way the tray bars skip it (it's non-pinnable).
-            .first { $0.hasData && !$0.isChart }
-
-        guard let primary else { return WidgetData.noDataHeadline }
-        return primary.valueText
-    }
-
     private func resolve(_ line: MetricLine, descriptor: WidgetDescriptor) -> WidgetData? {
         switch line {
         case .progress(_, let used, let limit, let format, let resetsAt, let periodDurationMs, _):
@@ -499,7 +482,7 @@ final class WidgetDataStore {
             // meters keep their raw `used`: a dollar/count overage (used > limit) is real and is
             // conveyed by the meter's spent state rather than hidden.
             let normalizedUsed = format == .percent ? ProviderParse.clampPercent(used) : used
-            return WidgetData(
+            var result = WidgetData(
                 title: descriptor.sample.title,
                 icon: descriptor.sample.icon,
                 kind: format.metricKind,
@@ -513,6 +496,10 @@ final class WidgetDataStore {
                 limitNoun: descriptor.sample.limitNoun,
                 infoNote: descriptor.sample.infoNote
             )
+            // Descriptor opt-in (session-window meters read "Not started" when unused); the fresh
+            // `.progress` result doesn't start from the sample, so carry the flag explicitly.
+            result.isSessionWindow = descriptor.sample.isSessionWindow
+            return result
         case .text(_, let value, _, _):
             return resolveText(value, descriptor: descriptor)
         case .values(_, let values, _, let expiriesAt, let unknownModels, let modelBreakdown):
