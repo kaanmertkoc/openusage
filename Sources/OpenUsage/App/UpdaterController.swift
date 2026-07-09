@@ -37,7 +37,7 @@ final class UpdaterController {
     /// routes through `checkForUpdates()` — a user-initiated check, which Sparkle brings to the front.
     private(set) var availableUpdateVersion: String?
 
-    /// Backs the early-access toggle. Persisted to `UserDefaults`; flipping it resets Sparkle's update
+    /// Backs the "Beta Updates" toggle. Persisted to `UserDefaults`; flipping it resets Sparkle's update
     /// cycle so the new channel set takes effect on the next scheduled check instead of a day later.
     var betaChannelEnabled: Bool {
         didSet {
@@ -47,7 +47,7 @@ final class UpdaterController {
         }
     }
 
-    /// Backs the "Automatically Check for Updates" toggle. Sparkle persists this in `UserDefaults` itself,
+    /// Backs the "Update Automatically" toggle. Sparkle persists this in `UserDefaults` itself,
     /// so this is a thin pass-through rather than a shadow preference.
     var automaticallyChecksForUpdates: Bool {
         get { controller?.updater.automaticallyChecksForUpdates ?? false }

@@ -77,8 +77,7 @@ struct NotificationState: Equatable, Sendable {
     var primed: Bool = false
 }
 
-/// Which per-milestone toggles are currently on. The master toggle is applied by the caller before
-/// this runs; this struct only carries the three individual switches.
+/// Which of the three independent per-milestone toggles are currently on.
 struct PaceNotificationToggles: Sendable {
     var underTenPercent: Bool
     var healthyToClose: Bool

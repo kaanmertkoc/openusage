@@ -24,8 +24,8 @@ final class WidgetDataStore {
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
     /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
     private let now: () -> Date
-    /// Quota-notification preferences (master + per-trigger). Injected; `nil` disables notifications
-    /// entirely (tests and previews that don't wire it).
+    /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
+    /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
