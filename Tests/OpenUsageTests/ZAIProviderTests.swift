@@ -150,7 +150,7 @@ final class ZAIAuthStoreTests: XCTestCase {
         XCTAssertNil(store.loadAPIKey())
     }
 
-    // MARK: - In-app save / delete / status (Settings ▸ API Keys)
+    // MARK: - In-app save / delete / status (Customize → Z.ai → API Key)
 
     func testSaveAPIKeyWritesTrimmedJSONConfigFile() throws {
         let files = FakeFiles()

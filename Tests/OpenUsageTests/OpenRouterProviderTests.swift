@@ -59,7 +59,7 @@ final class OpenRouterAuthStoreTests: XCTestCase {
         XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-env")
     }
 
-    // MARK: - In-app save / delete / status (Settings ▸ API Keys)
+    // MARK: - In-app save / delete / status (Customize → OpenRouter → API Key)
 
     func testSaveAPIKeyWritesTrimmedJSONConfigFile() throws {
         let files = FakeFiles()

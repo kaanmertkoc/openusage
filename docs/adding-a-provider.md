@@ -38,10 +38,11 @@ of the number, not by the provider:
   dollars *and* tokens, Codex credits carry dollars *and* a count. The widget picks which to show
   (cost-only, tokens-only, or both) via its descriptor, and formatting happens at the display edge, so the
   menu bar never re-parses a string. Prefer this for numbers.
-- **`.text`** — a value shown as-is, like `$12.34 spent`. Use it only for genuinely string-y rows, or a
-  capped dollar amount whose limit lives on the descriptor.
 - **`.badge`** — a short status pill, like `Disabled` or a pay-as-you-go cap. Use it for state rather than
   a fillable number.
+- **`.chart`** — dated numeric points for a compact usage-trend row.
+- **`.text`** — a string-valued provider notice preserved in the local API. It does not render a widget;
+  use `.progress`, `.values`, `.badge`, or `.chart` for every descriptor-backed row.
 
 Set the snapshot's `plan` when the provider exposes a plan name. On failure, return
 `ProviderSnapshot.error(provider:error:)` with a typed provider error when possible, so telemetry can group

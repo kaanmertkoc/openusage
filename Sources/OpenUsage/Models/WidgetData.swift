@@ -58,14 +58,10 @@ struct WidgetData: Hashable {
     var infoNote: String?
     /// Optional source note for value rows such as Cursor spend history.
     var valueTooltipNote: String?
-    /// Descriptor opt-in: render the provider's `.text` line verbatim as the row's right-aligned detail
-    /// (e.g. Codex Credits "$32.84 · 821 credits") instead of reformatting it as "<value> <word>". The
-    /// numeric part is still parsed into `used` so the menu bar keeps its compact value.
-    var preservesRawText: Bool = false
     /// False when no real provider metric backs this tile. The view then shows a "No data" state
     /// instead of the descriptor's placeholder template numbers. True for real data and direct fixtures.
     var hasData: Bool = true
-    /// Raw numbers for an unbounded `.values` row (empty for meters and legacy `.text` rows). The view
+    /// Raw numbers for an unbounded `.values` row (empty for meters). The view
     /// formats these at render time instead of reading a baked string — see `unboundedDetail`.
     var values: [MetricValue] = []
     /// Which of `values` this widget renders — cost-only, tokens-only, or the combined `.all`. Set by
@@ -219,8 +215,8 @@ struct WidgetData: Hashable {
     var valueText: String {
         guard hasData else { return Self.noDataHeadline }
         if let valueTextOverride { return valueTextOverride }
-        // A `.values` row's primary reading is its first selected value; meters and legacy `.text` rows
-        // fall through to the bounded/`used` formatting.
+        // A `.values` row's primary reading is its first selected value; meters fall through to the
+        // bounded/`used` formatting.
         if let first = selectedValues.first {
             return (valuePrefix ?? "") + MetricFormatter.number(first.number, kind: first.kind, style: .row)
         }
@@ -321,7 +317,7 @@ struct WidgetData: Hashable {
             }
             return selected.map { MetricFormatter.string(for: $0, style: .row) }.joined(separator: " · ")
         }
-        // Legacy unbounded `.text` rows (e.g. Devin extra balance): "<value> <suffix> <word>".
+        // Fallback for an unbounded row without typed values: "<value> <suffix> <word>".
         let word = unboundedValueWord ?? displayMode.label.lowercased()
         if kind == .count, let countSuffix {
             return "\(valueText) \(countSuffix) \(word)"
@@ -448,8 +444,8 @@ struct WidgetData: Hashable {
         return Formatters.resetRelativeLabel(until: resetsAt)
     }
 
-    /// Bounded headline / legacy `.text` formatting, delegated to the shared formatter so the popover
-    /// and the tray always agree. Unbounded `.values` rows format their values directly (`unboundedDetail`).
+    /// Bounded/fallback formatting, delegated to the shared formatter so the popover and tray always
+    /// agree. Unbounded `.values` rows format their values directly (`unboundedDetail`).
     private func format(_ value: Double) -> String {
         MetricFormatter.number(value, kind: kind, style: .full)
     }
