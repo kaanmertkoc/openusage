@@ -7,10 +7,11 @@ import SwiftUI
 /// Screenshot / Check for Updates / About / Quit. Customize leads the menu because it's the screen
 /// users reach for most; Settings stays one click away (and always via ⌘,).
 ///
-/// The capsule is a `.buttonStyle(.plain)` `Menu` with a single `interactiveGlass(in: Capsule())`
-/// surface behind it — the system `.buttonStyle(.glass)` renders flat on a `Menu` (its own button
-/// chrome wins), so the glass goes on the container. It falls back to a frosted material capsule on
-/// macOS 15. The menu renders in its own `NSMenu`-backed window, which
+/// The capsule is a `.buttonStyle(.plain)` `Menu` with one `interactiveGlass(in: Capsule())` treatment
+/// behind it — the system `.buttonStyle(.glass)` renders flat on a `Menu` (its own button chrome wins),
+/// so the treatment goes on the container. Increase Transparency adds an adaptive frosted base beneath
+/// the glass for contrast; macOS 15 uses that frosted capsule as its fallback. The menu renders in its
+/// own `NSMenu`-backed window, which
 /// `StatusItemController.shouldKeepPanelOpen` keeps the popover open for.
 ///
 /// Only the dashboard shows this; the Customize and Settings screens carry their own top-leading back
@@ -26,6 +27,7 @@ struct HeaderView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(UpdaterController.self) private var updater
+    @Environment(PopoverTransparencyStore.self) private var transparency
     @Environment(\.colorScheme) private var colorScheme
     /// The current screen. The footer is fixed chrome keyed off `layout.screen` (it no longer slides
     /// per-page), so this control shows only when that's `.dashboard` and swaps in place on a switch.
@@ -44,7 +46,10 @@ struct HeaderView: View {
         if screen == .dashboard {
             optionsButton
                 .fixedSize()
-                .interactiveGlass(in: Capsule())
+                .interactiveGlass(
+                    in: Capsule(),
+                    reinforced: transparency.effectiveStyle.needsChromeLegibilityBacking
+                )
         }
     }
 
