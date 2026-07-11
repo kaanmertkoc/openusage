@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 /// The popover content: the provider/metric list (or the Customize / Settings screen) as a scroll
 /// view between fixed chrome — a top back/title bar on Customize/Settings, and a single bottom footer
@@ -21,7 +20,6 @@ struct DashboardView: View {
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(PopoverTransparencyStore.self) private var transparency
     @Environment(UpdaterController.self) private var updater
-    @State private var didInitialRefresh = false
     @State private var reorderLift: ReorderLift?
     /// The panel height SwiftUI drives — the single animation clock. `PanelHeightModifier` follows it
     /// frame-by-frame onto the AppKit panel, so the window resize rides the same spring as the screen
@@ -219,11 +217,6 @@ struct DashboardView: View {
                     withAnimation(Motion.spring) { animatedHeight = target }
                 }
             }
-            .task {
-                guard !didInitialRefresh else { return }
-                didInitialRefresh = true
-                await dataStore.refreshAll()
-            }
             // Watches for the secret transparency code while the panel is key and toggles the egg. A
             // sibling of `PopoverKeyReader` that only observes (never consumes), so it can't disturb
             // navigation or typing.
@@ -397,9 +390,10 @@ struct DashboardView: View {
 
 /// The popover's opaque backdrop tray, painted behind all content so the popover reads as one solid
 /// panel — the data region never shows the desktop through it. Matches the AppKit panel backdrop
-/// (`StatusItemController`'s `NSBox`) — both `Theme.traySurface`. The footer draws its own frosted
-/// glass bar on top of this (in-window), so glass stays chrome over solid content. Never hit-tests,
-/// so it can't steal clicks from the content above it.
+/// (`PopoverBackdropView`'s `NSBox`): SwiftUI uses `Theme.traySurface` here while AppKit uses the
+/// matching `Theme.trayNSColor`. The footer draws its own frosted glass bar on top of this (in-window),
+/// so glass stays chrome over solid content. Never hit-tests, so it can't steal clicks from the content
+/// above it.
 private struct PopoverSurface: View {
     @Environment(\.popoverSurfaceTreatment) private var treatment
 

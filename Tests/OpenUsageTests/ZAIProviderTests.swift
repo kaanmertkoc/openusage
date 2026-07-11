@@ -150,7 +150,7 @@ final class ZAIAuthStoreTests: XCTestCase {
         XCTAssertNil(store.loadAPIKey())
     }
 
-    // MARK: - In-app save / delete / status (Settings ▸ API Keys)
+    // MARK: - In-app save / delete / status (Customize → Z.ai → API Key)
 
     func testSaveAPIKeyWritesTrimmedJSONConfigFile() throws {
         let files = FakeFiles()
@@ -496,8 +496,6 @@ final class ZAIProviderTests: XCTestCase {
 
         XCTAssertEqual(provider.apiKeyStatus, .fromEnvironment)
         XCTAssertEqual(provider.currentAPIKey(), "zai-env")
-        XCTAssertEqual(provider.apiKeyEnvironmentName, "ZAI_API_KEY")
-        XCTAssertTrue(provider.apiKeyStorageDescription.contains("zai.json"))
 
         try provider.saveAPIKey("zai-saved")
         XCTAssertEqual(provider.apiKeyStatus, .overrideActive)

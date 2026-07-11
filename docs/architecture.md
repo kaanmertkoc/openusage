@@ -31,7 +31,8 @@ Each provider is a small module that conforms to `ProviderRuntime`. A refresh fl
    never asks the user to paste tokens.
 2. **Usage client** — makes the HTTP calls to the provider's API.
 3. **Mapper** — turns the provider's response into the app's own vocabulary: a `ProviderSnapshot`
-   containing `MetricLine` values (`.progress`, `.text`, `.badge`).
+   containing typed widget values (`.progress`, `.values`, `.badge`, `.chart`) plus `.text` notices that
+   remain available through the local API but do not render as widgets.
 
 Because every provider produces the same normalized `MetricLine` shapes, the UI renders them all the same
 way and doesn't need to know provider-specific details. To add one, see
