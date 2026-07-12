@@ -15,13 +15,17 @@ actor UsageLogReadFailureReporter {
         }
     }
 
-    func update(checkedPaths: Set<String>, failingPaths nextFailingPaths: Set<String>) {
+    /// Returns the newly-failing paths so callers can log per-path detail on the same edge-triggered
+    /// cadence as the summary warning (once per new failure, not once per refresh).
+    @discardableResult
+    func update(checkedPaths: Set<String>, failingPaths nextFailingPaths: Set<String>) -> Set<String> {
         let newlyFailing = nextFailingPaths.subtracting(failingPaths)
         // Only clear a remembered failure when that same path was checked again and no longer failed.
         // A scan may look at a different batch of files, which says nothing about older failures.
         failingPaths.subtract(checkedPaths)
         failingPaths.formUnion(nextFailingPaths)
-        guard !newlyFailing.isEmpty else { return }
+        guard !newlyFailing.isEmpty else { return [] }
         warning(newlyFailing.count)
+        return newlyFailing
     }
 }

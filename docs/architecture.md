@@ -10,7 +10,7 @@ interface hosted inside an AppKit status item and panel. The code is grouped by 
 
 - `App/` — startup and the AppKit bridge (status item, panel, the app entry point).
 - `Models/` — the small value types the rest of the app speaks in (`MetricLine`, `WidgetData`, descriptors).
-- `Providers/` — one folder per provider (Claude, Codex, Cursor, Devin, Grok).
+- `Providers/` — one folder per provider (Claude, Codex, Cursor, Devin, Grok, OpenCode, …).
 - `Stores/` — the mutable state the UI observes.
 - `Services/` — shared infrastructure (HTTP, the local API, process running).
 - `Support/` — small shared helpers (formatting, parsing, animations).

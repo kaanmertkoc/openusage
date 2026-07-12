@@ -171,6 +171,15 @@ extension CopilotUsageError: CategorizedError {
     }
 }
 
+extension OpenCodeUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notLoggedIn: .notLoggedIn
+        case .credentialsUnreadable, .databaseUnreadable: .credentialAccess
+        }
+    }
+}
+
 extension OpenRouterAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

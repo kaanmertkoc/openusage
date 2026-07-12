@@ -1,6 +1,6 @@
 # Model Pricing
 
-How OpenUsage turns token counts into the estimated dollars on the spend tiles (Claude, Codex, Cursor, Grok). OpenRouter is the exception: its API reports billed dollars directly, so nothing here applies to it.
+How OpenUsage turns token counts into the estimated dollars on the spend tiles (Claude, Codex, Cursor, Grok). OpenRouter and OpenCode are the exceptions: OpenRouter's API reports billed dollars directly, and OpenCode records its own per-message cost in its local logs, so nothing here applies to them.
 
 ## Where prices come from
 
