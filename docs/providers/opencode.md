@@ -44,8 +44,9 @@ used Go). Zen usage is pay-as-you-go credits with no cap, so it appears only in 
 
 - **Everything shows "No data"** — OpenUsage needs OpenCode's local database at
   `~/.local/share/opencode/opencode*.db`. Run an OpenCode session (or log into Go), then refresh.
-- **No Session / Weekly / Monthly meters** — those are Go-plan caps; you'll only see them once there's
-  OpenCode Go usage on this Mac. Zen-only users see the spend tiles instead.
+- **No Session / Weekly / Monthly meters** — those are Go-plan caps; you'll see them once you're logged
+  into OpenCode Go or have used it recently on this Mac. Zen-only (or lapsed) users see the spend tiles
+  instead — old Go history alone won't bring the caps back.
 - **Numbers look lower than your dashboard** — the meters are local-observed spend (this Mac only); see the
   note above.
 

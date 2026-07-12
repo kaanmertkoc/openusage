@@ -68,7 +68,7 @@ final class OpenCodeProvider: ProviderRuntime {
     func refresh() async -> ProviderSnapshot {
         let hasGoKey = await loadOffMainActor { [authStore] in authStore.goAPIKey() != nil }
 
-        guard let scan = await usageScanner.scan(now: now()) else {
+        guard let scan = await usageScanner.scan(now: now(), hasGoKey: hasGoKey) else {
             // No OpenCode database on disk. Logged-in-but-idle → "No usage data"; otherwise not logged in.
             guard hasGoKey else {
                 return ProviderSnapshot.error(provider: provider, error: OpenCodeUsageError.notLoggedIn)
@@ -91,7 +91,9 @@ final class OpenCodeProvider: ProviderRuntime {
         SpendTileMapper.appendUsageTrend(scan.logScan.series, to: &lines, now: now(), note: sourceNote)
         MetricLine.appendNoDataIfNeeded(&lines)
 
-        let plan: String? = (hasGoKey || scan.goWindows != nil) ? "Go" : nil
+        // `goWindows` is present only on a current Go signal (key or recent spend), never a stale anchor,
+        // so it's the honest source for the plan badge too.
+        let plan: String? = scan.goWindows != nil ? "Go" : nil
         return ProviderSnapshot.make(provider: provider, plan: plan, lines: lines, refreshedAt: now())
     }
 }

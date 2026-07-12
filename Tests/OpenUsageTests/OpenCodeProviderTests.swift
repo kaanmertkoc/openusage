@@ -88,15 +88,38 @@ final class OpenCodeProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
     }
+
+    func testStaleGoHistoryDoesNotShowGoPlanOrMeters() async {
+        // Zen-only recent usage + an old opencode-go anchor + no Go key: no "Go" badge, no cap meters,
+        // but the Zen spend still shows in the tiles.
+        let now = d("2026-07-12T12:00:00.000Z")
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let provider = OpenCodeProvider(
+            authStore: authStore(files: FakeFiles()),
+            usageScanner: OpenCodeUsageScanner(
+                sqlite: StubSQLite(data: ["/oc/opencode.db": db], anchor: "1700000000000"),
+                databasePaths: { ["/oc/opencode.db"] }
+            ),
+            now: { now }
+        )
+        let snapshot = await provider.refresh()
+        XCTAssertNil(snapshot.plan)
+        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+    }
 }
 
 private final class StubSQLite: SQLiteAccessing, @unchecked Sendable {
     var data: [String: String]
-    init(data: [String: String] = [:]) { self.data = data }
+    var anchor: String?
+    init(data: [String: String] = [:], anchor: String? = nil) {
+        self.data = data
+        self.anchor = anchor
+    }
 
     func queryValue(path: String, sql: String) throws -> String? {
         if sql.contains("json_group_array") { return data[path] }
-        if sql.contains("MIN(time_created)") { return nil }
+        if sql.contains("MIN(time_created)") { return anchor }
         if sql.contains("SELECT 1") {
             let payload = data[path]
             return (payload != nil && payload != "[]" && !(payload ?? "").isEmpty) ? "1" : nil

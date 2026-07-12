@@ -50,7 +50,7 @@ struct OpenCodeUsageScanner: Sendable {
     /// provider shows "No data"); a present-but-empty database yields an empty scan (idle tiles collapse
     /// to "No data" via `SpendTileMapper`). 33 days covers the widest meter window (anchored month) plus
     /// slack; the tiles/trend are re-bounded to 31 calendar days below.
-    func scan(now: Date, daysBack: Int = 33) async -> OpenCodeUsageScan? {
+    func scan(now: Date, daysBack: Int = 33, hasGoKey: Bool = false) async -> OpenCodeUsageScan? {
         let paths = databasePaths()
         guard !paths.isEmpty else {
             await readFailureReporter.update(checkedPaths: [], failingPaths: [])
@@ -95,14 +95,16 @@ struct OpenCodeUsageScanner: Sendable {
         }
         let logScan = accumulator.build()
 
-        // Go-only windows → the Session / Weekly / Monthly caps. Skipped entirely when there's no Go
-        // footprint (Zen-only user), so the card shows tiles without three empty $0 meters.
+        // Go-only windows → the Session / Weekly / Monthly caps. Shown only on a CURRENT Go signal: the
+        // user is logged into Go (`hasGoKey`), or has spent on Go within the window. A stale anchor from
+        // old usage must NOT resurrect the caps or the "Go" plan for a lapsed or Zen-only user — the
+        // anchor only sets the monthly-cycle boundary once we've decided to show the meters.
         let goCosts = rows
             .filter { $0.providerID == Self.goProviderID }
             .map { (ms: $0.ms, cost: $0.cost) }
-        let goWindows: OpenCodeGoWindows? = (goCosts.isEmpty && anchorMs == nil)
-            ? nil
-            : OpenCodeGoWindowMath.compute(costs: goCosts, anchorMs: anchorMs, now: now)
+        let goWindows: OpenCodeGoWindows? = (hasGoKey || !goCosts.isEmpty)
+            ? OpenCodeGoWindowMath.compute(costs: goCosts, anchorMs: anchorMs, now: now)
+            : nil
 
         return OpenCodeUsageScan(logScan: logScan, goWindows: goWindows)
     }

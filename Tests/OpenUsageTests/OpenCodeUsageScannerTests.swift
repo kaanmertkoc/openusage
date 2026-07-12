@@ -112,6 +112,30 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         let tokens = scan.logScan.series.daily.reduce(0) { $0 + $1.totalTokens }
         XCTAssertEqual(tokens, 1_000_000_000_000_000)
     }
+
+    func testStaleGoAnchorWithoutRecentSpendOrKeyHasNoGoWindows() async {
+        // Old opencode-go usage left an anchor, but there's no recent Go spend and no auth key: the caps
+        // (and the "Go" badge) must NOT come back for a lapsed/Zen-only user.
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(data: ["/oc/opencode.db": db], anchors: ["/oc/opencode.db": "1700000000000"]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        guard let scan = await scanner.scan(now: now, hasGoKey: false) else { return XCTFail("expected a scan") }
+        XCTAssertNil(scan.goWindows)
+    }
+
+    func testGoKeyShowsWindowsEvenWithoutRecentSpend() async {
+        // Logged into Go but idle in-window → still show the caps at $0, using the anchor for the month.
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(data: ["/oc/opencode.db": db], anchors: ["/oc/opencode.db": "1700000000000"]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        guard let scan = await scanner.scan(now: now, hasGoKey: true) else { return XCTFail("expected a scan") }
+        XCTAssertNotNil(scan.goWindows)
+        XCTAssertEqual(scan.goWindows?.sessionSpend ?? -1, 0, accuracy: 0.0001)
+    }
 }
 
 /// Stub that returns crafted payloads per database path and classifies the query by SQL shape.
