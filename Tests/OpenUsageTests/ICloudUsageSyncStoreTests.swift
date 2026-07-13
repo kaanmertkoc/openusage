@@ -10,6 +10,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             writeDebounce: .milliseconds(10),
             observesMetadataChanges: false
         )
@@ -32,6 +33,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             writeDebounce: .milliseconds(20),
             observesMetadataChanges: false
         )
@@ -55,6 +57,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             observesMetadataChanges: false
         )
 
@@ -79,6 +82,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             observesMetadataChanges: false
         )
 
@@ -105,6 +109,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             observesMetadataChanges: false
         )
 
@@ -122,6 +127,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             writeDebounce: .milliseconds(10),
             observesMetadataChanges: false
         )
@@ -139,6 +145,51 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         }
 
         XCTAssertTrue(sync.isSyncing)
+    }
+
+    func testDeviceIdentitySurvivesPreferencesResetThroughKeychainStore() {
+        let expectedID = UUID().uuidString.lowercased()
+        let firstDefaults = makeDefaults("identity-first")
+        firstDefaults.set(expectedID, forKey: "openusage.icloudSync.deviceID.v1")
+        let deviceIDStore = MemoryDeviceIDStore()
+
+        let first = ICloudUsageSyncStore(
+            dataStore: makeDataStore(firstDefaults),
+            defaults: firstDefaults,
+            fileStore: RecordingHistoryFileStore(),
+            deviceIDStore: deviceIDStore,
+            observesMetadataChanges: false
+        )
+        let resetDefaults = makeDefaults("identity-after-reset")
+        let afterReset = ICloudUsageSyncStore(
+            dataStore: makeDataStore(resetDefaults),
+            defaults: resetDefaults,
+            fileStore: RecordingHistoryFileStore(),
+            deviceIDStore: deviceIDStore,
+            observesMetadataChanges: false
+        )
+
+        XCTAssertEqual(first.deviceID, expectedID)
+        XCTAssertEqual(afterReset.deviceID, expectedID)
+        XCTAssertEqual(resetDefaults.string(forKey: "openusage.icloudSync.deviceID.v1"), expectedID)
+    }
+
+    func testKeychainIdentityIsScopedToDevelopmentAndProductionBundles() throws {
+        let keychain = ServiceKeychain()
+        let development = KeychainICloudDeviceIDStore(
+            keychain: keychain,
+            bundleIdentifier: "com.robinebers.openusage.dev"
+        )
+        let production = KeychainICloudDeviceIDStore(
+            keychain: keychain,
+            bundleIdentifier: "com.robinebers.openusage"
+        )
+
+        try development.writeDeviceID("development-id")
+        try production.writeDeviceID("production-id")
+
+        XCTAssertEqual(try development.readDeviceID(), "development-id")
+        XCTAssertEqual(try production.readDeviceID(), "production-id")
     }
 
     private func makeDataStore(_ defaults: UserDefaults) -> WidgetDataStore {
@@ -168,6 +219,18 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTFail("Condition was not met before timeout")
+    }
+}
+
+private final class MemoryDeviceIDStore: ICloudDeviceIDStoring, @unchecked Sendable {
+    private var deviceID: String?
+
+    func readDeviceID() throws -> String? {
+        deviceID
+    }
+
+    func writeDeviceID(_ deviceID: String) throws {
+        self.deviceID = deviceID
     }
 }
 

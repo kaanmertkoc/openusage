@@ -2,7 +2,9 @@
 
 **Sync Across Macs** is off by default. When it is on, each Mac writes one versioned OpenUsage history
 file to the app's private iCloud container and reads the files written by other Macs signed into the same
-iCloud account. There is no folder picker, pairing code, or separate account.
+iCloud account. A random device ID is kept in the login Keychain so the same Mac continues updating its
+existing file after app preferences are reset or the app is reinstalled. There is no folder picker,
+pairing code, or separate account.
 
 The file contains normalized daily tokens and spend, model totals, and unknown-model names for sources
 that are local to one Mac: Claude, Codex, Grok, and OpenCode. It does not contain credentials, account

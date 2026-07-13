@@ -12,6 +12,32 @@ protocol UsageHistoryFileStoring: Sendable {
     func delete(deviceID: String) async throws
 }
 
+protocol ICloudDeviceIDStoring: Sendable {
+    func readDeviceID() throws -> String?
+    func writeDeviceID(_ deviceID: String) throws
+}
+
+struct KeychainICloudDeviceIDStore: ICloudDeviceIDStoring {
+    private let service: String
+    private let keychain: any KeychainAccessing
+
+    init(
+        keychain: any KeychainAccessing = SecurityKeychainAccessor(),
+        bundleIdentifier: String = Bundle.main.bundleIdentifier ?? "com.robinebers.openusage"
+    ) {
+        self.keychain = keychain
+        self.service = "\(bundleIdentifier).icloud-sync-device-id.v1"
+    }
+
+    func readDeviceID() throws -> String? {
+        try keychain.readGenericPasswordForCurrentUser(service: service)
+    }
+
+    func writeDeviceID(_ deviceID: String) throws {
+        try keychain.writeGenericPasswordForCurrentUser(service: service, value: deviceID)
+    }
+}
+
 enum ICloudUsageSyncError: Error, LocalizedError {
     case unavailable
 
@@ -129,6 +155,7 @@ final class ICloudUsageSyncStore {
 
     private let defaults: UserDefaults
     private let fileStore: any UsageHistoryFileStoring
+    private let identityError: String?
     private let dataStore: WidgetDataStore
     private let writeDebounce: Duration
     private let observesMetadataChanges: Bool
@@ -147,7 +174,8 @@ final class ICloudUsageSyncStore {
         }
     }
     private(set) var isSyncing = false
-    private(set) var serviceError: String?
+    private var operationError: String?
+    var serviceError: String? { operationError ?? identityError }
     private(set) var invalidFileMessages: [String] = []
     private(set) var documents: [UsageHistoryDocument] = []
 
@@ -155,6 +183,7 @@ final class ICloudUsageSyncStore {
         dataStore: WidgetDataStore,
         defaults: UserDefaults = .standard,
         fileStore: any UsageHistoryFileStoring = ICloudUsageHistoryFileStore(),
+        deviceIDStore: any ICloudDeviceIDStoring = KeychainICloudDeviceIDStore(),
         writeDebounce: Duration = .seconds(3),
         observesMetadataChanges: Bool = true
     ) {
@@ -163,13 +192,9 @@ final class ICloudUsageSyncStore {
         self.fileStore = fileStore
         self.writeDebounce = writeDebounce
         self.observesMetadataChanges = observesMetadataChanges
-        if let saved = defaults.string(forKey: Self.deviceIDKey), !saved.isEmpty {
-            self.deviceID = saved
-        } else {
-            let id = UUID().uuidString.lowercased()
-            defaults.set(id, forKey: Self.deviceIDKey)
-            self.deviceID = id
-        }
+        let identity = Self.resolveDeviceID(defaults: defaults, store: deviceIDStore)
+        self.deviceID = identity.id
+        self.identityError = identity.error
         self.deviceName = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
         self.enabled = defaults.bool(forKey: Self.enabledKey)
         dataStore.onLocalHistoryChanged = { [weak self] in self?.scheduleWrite() }
@@ -210,7 +235,7 @@ final class ICloudUsageSyncStore {
             invalidFileMessages = []
             do {
                 try await fileStore.delete(deviceID: deviceID)
-                serviceError = nil
+                operationError = nil
             } catch {
                 report(error, context: "disable")
             }
@@ -232,7 +257,7 @@ final class ICloudUsageSyncStore {
                     try await fileStore.delete(deviceID: deviceID)
                     return
                 }
-                serviceError = nil
+                operationError = nil
                 await reload()
             } catch {
                 report(error, context: "write")
@@ -250,7 +275,7 @@ final class ICloudUsageSyncStore {
                 documents = UsageHistoryDocument.newestByDevice(result.documents)
                 invalidFileMessages = result.invalidFileMessages
                 dataStore.setPeerHistoryDocuments(result.documents, ownDeviceID: deviceID)
-                serviceError = result.invalidFileMessages.isEmpty
+                operationError = result.invalidFileMessages.isEmpty
                     ? nil
                     : "Some synced usage data couldn’t be read. Check the log for details."
             } catch {
@@ -268,8 +293,38 @@ final class ICloudUsageSyncStore {
     }
 
     private func report(_ error: Error, context: String) {
-        serviceError = error.localizedDescription
+        operationError = error.localizedDescription
         AppLog.warn(.config, "iCloud history \(context) failed: \(error.localizedDescription)")
+    }
+
+    private static func resolveDeviceID(
+        defaults: UserDefaults,
+        store: any ICloudDeviceIDStoring
+    ) -> (id: String, error: String?) {
+        let saved = normalizedDeviceID(defaults.string(forKey: deviceIDKey))
+        do {
+            if let stored = normalizedDeviceID(try store.readDeviceID()) {
+                defaults.set(stored, forKey: deviceIDKey)
+                return (stored, nil)
+            }
+
+            let id = saved ?? UUID().uuidString.lowercased()
+            try store.writeDeviceID(id)
+            defaults.set(id, forKey: deviceIDKey)
+            return (id, nil)
+        } catch {
+            let id = saved ?? UUID().uuidString.lowercased()
+            defaults.set(id, forKey: deviceIDKey)
+            let message = "OpenUsage couldn’t save this Mac’s sync identity in Keychain. "
+                + "Sync may create a duplicate device if app preferences are reset."
+            AppLog.warn(.keychain, "iCloud device identity failed: \(error.localizedDescription)")
+            return (id, message)
+        }
+    }
+
+    private static func normalizedDeviceID(_ value: String?) -> String? {
+        guard let value, UUID(uuidString: value) != nil else { return nil }
+        return value.lowercased()
     }
 
     private func startObserving() {
