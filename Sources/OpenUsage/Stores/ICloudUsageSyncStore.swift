@@ -131,8 +131,10 @@ final class ICloudUsageSyncStore {
     private let fileStore: any UsageHistoryFileStoring
     private let dataStore: WidgetDataStore
     private let writeDebounce: Duration
+    private let syncActivityHold: Duration
     private let observesMetadataChanges: Bool
     private var writeTask: Task<Void, Never>?
+    private var hideSyncActivityTask: Task<Void, Never>?
     private var metadataQuery: NSMetadataQuery?
     private var notificationTokens: [NSObjectProtocol] = []
     private var syncActivityCount = 0
@@ -156,12 +158,14 @@ final class ICloudUsageSyncStore {
         defaults: UserDefaults = .standard,
         fileStore: any UsageHistoryFileStoring = ICloudUsageHistoryFileStore(),
         writeDebounce: Duration = .seconds(3),
+        syncActivityHold: Duration = .milliseconds(650),
         observesMetadataChanges: Bool = true
     ) {
         self.dataStore = dataStore
         self.defaults = defaults
         self.fileStore = fileStore
         self.writeDebounce = writeDebounce
+        self.syncActivityHold = syncActivityHold
         self.observesMetadataChanges = observesMetadataChanges
         if let saved = defaults.string(forKey: Self.deviceIDKey), !saved.isEmpty {
             self.deviceID = saved
@@ -266,11 +270,18 @@ final class ICloudUsageSyncStore {
     }
 
     private func withSyncActivity(_ operation: () async -> Void) async {
+        hideSyncActivityTask?.cancel()
         syncActivityCount += 1
         isSyncing = true
         await operation()
         syncActivityCount -= 1
-        isSyncing = syncActivityCount > 0
+        guard syncActivityCount == 0 else { return }
+        hideSyncActivityTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: syncActivityHold)
+            guard !Task.isCancelled, syncActivityCount == 0 else { return }
+            isSyncing = false
+        }
     }
 
     private func report(_ error: Error, context: String) {

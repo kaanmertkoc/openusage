@@ -16,7 +16,7 @@ struct ICloudSyncSettingsSection: View {
                     .hoverTooltip(
                         "OpenUsage calculates costs and tokens for Claude, Codex, and other providers "
                             + "from files stored on each Mac. Sync shares that history through iCloud so "
-                            + "you see one combined summary."
+                            + "you can see one combined summary."
                     )
             }
             .padding(.horizontal, 8)
@@ -37,10 +37,7 @@ struct ICloudSyncSettingsSection: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, density.controlRowPadding)
                 .animation(Motion.spring, value: sync.isSyncing)
-                Text(
-                    "Shares usage history through iCloud and combines multiple devices as one. "
-                        + "Account limits, credentials, and raw logs are never shared."
-                )
+                Text("Account limits, credentials, and logs are never shared.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)

@@ -11,6 +11,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             defaults: defaults,
             fileStore: fileStore,
             writeDebounce: .milliseconds(10),
+            syncActivityHold: .milliseconds(10),
             observesMetadataChanges: false
         )
 
@@ -33,6 +34,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             defaults: defaults,
             fileStore: fileStore,
             writeDebounce: .milliseconds(20),
+            syncActivityHold: .milliseconds(10),
             observesMetadataChanges: false
         )
         sync.enabled = true
@@ -55,6 +57,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            syncActivityHold: .milliseconds(10),
             observesMetadataChanges: false
         )
 
@@ -80,6 +83,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            syncActivityHold: .milliseconds(10),
             observesMetadataChanges: false
         )
 
@@ -98,6 +102,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             defaults: defaults,
             fileStore: fileStore,
             writeDebounce: .milliseconds(10),
+            syncActivityHold: .milliseconds(10),
             observesMetadataChanges: false
         )
 
@@ -114,6 +119,24 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         }
 
         XCTAssertTrue(sync.isSyncing)
+    }
+
+    func testShortOperationStaysVisibleLongEnoughForSpinnerToAnimate() async throws {
+        let defaults = makeDefaults("minimum-sync-visibility")
+        let fileStore = RecordingHistoryFileStore()
+        let sync = ICloudUsageSyncStore(
+            dataStore: makeDataStore(defaults),
+            defaults: defaults,
+            fileStore: fileStore,
+            syncActivityHold: .milliseconds(100),
+            observesMetadataChanges: false
+        )
+
+        sync.enabled = true
+        try await waitUntil { await fileStore.writeCount == 1 && sync.displayedDocuments.count == 1 }
+        XCTAssertTrue(sync.isSyncing)
+
+        try await waitUntil(timeout: .milliseconds(250)) { !sync.isSyncing }
     }
 
     private func makeDataStore(_ defaults: UserDefaults) -> WidgetDataStore {
