@@ -9,6 +9,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
     private let organization = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     private let otherOrganization = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
     private let clientID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    private let otherClientID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
     private let password = "fixture-safe-storage-password"
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -53,6 +54,53 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         guard case .notFound = selection else {
             return XCTFail("V2 tombstone should suppress the matching V1 token")
         }
+    }
+
+    func testFullScopeProductionClientOutranksLongerLivedProfileOnlyEntry() throws {
+        // Two live entries under the same org: a long-TTL profile-only leftover carrying a stale 5x
+        // tier, and the current full-scope Claude Code production login (20x) expiring sooner. Expiry
+        // alone would pick the stale 5x token; the ranking must pick the production login.
+        let productionClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+        let selection = ClaudeDesktopAuthStore.selectCredential(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization, scopes: "user:profile"):
+                    tokenEntry("stale-5x-token", expiresIn: 86_400, rateLimitTier: "default_claude_max_5x"),
+                cacheKey(
+                    organization: organization,
+                    clientID: productionClientID,
+                    scopes: "user:profile user:inference"
+                ):
+                    tokenEntry("current-20x-token", expiresIn: 1_800, rateLimitTier: "default_claude_max_20x")
+            ],
+            v1: nil,
+            now: now
+        )
+
+        guard case .available(let oauth) = selection else {
+            return XCTFail("expected an available credential, got \(selection)")
+        }
+        XCTAssertEqual(oauth.accessToken, "current-20x-token")
+        XCTAssertEqual(oauth.rateLimitTier, "default_claude_max_20x")
+    }
+
+    func testFullScopeEntryOutranksProfileOnlyEntryForNonProductionClients() throws {
+        let selection = ClaudeDesktopAuthStore.selectCredential(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization, scopes: "user:profile"):
+                    tokenEntry("profile-only-token", expiresIn: 86_400),
+                cacheKey(organization: organization, clientID: otherClientID, scopes: "user:profile user:inference"):
+                    tokenEntry("full-scope-token", expiresIn: 1_800)
+            ],
+            v1: nil,
+            now: now
+        )
+
+        guard case .available(let oauth) = selection else {
+            return XCTFail("expected an available credential, got \(selection)")
+        }
+        XCTAssertEqual(oauth.accessToken, "full-scope-token")
     }
 
     func testBackgroundReadDoesNotPromptButManualReadCan() throws {
@@ -327,16 +375,24 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         return DesktopFixture(store: store, files: files, keyReader: keyReader)
     }
 
-    private func cacheKey(organization: String) -> String {
-        "\(clientID):\(organization):https://api.anthropic.com:user:profile user:inference"
+    private func cacheKey(
+        organization: String,
+        clientID: String? = nil,
+        scopes: String = "user:profile user:inference"
+    ) -> String {
+        "\(clientID ?? self.clientID):\(organization):https://api.anthropic.com:\(scopes)"
     }
 
-    private func tokenEntry(_ token: String, expiresIn seconds: TimeInterval) -> [String: Any] {
+    private func tokenEntry(
+        _ token: String,
+        expiresIn seconds: TimeInterval,
+        rateLimitTier: String = "default"
+    ) -> [String: Any] {
         [
             "token": token,
             "expiresAt": (now.timeIntervalSince1970 + seconds) * 1000,
             "subscriptionType": "max",
-            "rateLimitTier": "default"
+            "rateLimitTier": rateLimitTier
         ]
     }
 

@@ -125,18 +125,37 @@ struct ClaudeDesktopAuthStore: Sendable {
 
     func load(allowInteraction: Bool) -> ClaudeDesktopCredentialResult {
         guard hasCredentialMaterial() else {
+            AppLog.info(LogTag.auth("claude"), "desktop load: no credential material (config/cookies missing)")
             return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
         }
 
         do {
             guard let key = try safeStorageKey(allowInteraction: allowInteraction) else {
+                AppLog.info(LogTag.auth("claude"), "desktop load: Safe Storage key unavailable (interaction=\(allowInteraction))")
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
             }
-            guard let activeOrg = try loadActiveOrganization(key: key),
-                  let caches = try loadCaches(key: key)
-            else {
+            let accountUUID = loadLastKnownAccountUUID()
+            guard let activeOrg = try loadActiveOrganization(key: key) else {
+                AppLog.info(
+                    LogTag.auth("claude"),
+                    "desktop load: no lastActiveOrg cookie (account=\(Self.shortID(accountUUID)))"
+                )
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
             }
+            guard let caches = try loadCaches(key: key) else {
+                AppLog.info(
+                    LogTag.auth("claude"),
+                    "desktop load: token cache unreadable (org=\(Self.shortID(activeOrg)) account=\(Self.shortID(accountUUID)))"
+                )
+                return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
+            }
+
+            let v2Orgs = Self.organizationIDs(in: caches.v2)
+            let v1Orgs = Self.organizationIDs(in: caches.v1)
+            AppLog.info(
+                LogTag.auth("claude"),
+                "desktop load: lastActiveOrg=\(Self.shortID(activeOrg)) account=\(Self.shortID(accountUUID)) v2Orgs=\(v2Orgs.map(Self.shortID).sorted()) v1Orgs=\(v1Orgs.map(Self.shortID).sorted())"
+            )
 
             let selection = Self.selectCredential(
                 activeOrganization: activeOrg,
@@ -146,20 +165,66 @@ struct ClaudeDesktopAuthStore: Sendable {
             )
             switch selection {
             case .available(let oauth):
+                AppLog.info(
+                    LogTag.auth("claude"),
+                    "desktop load: selected org=\(Self.shortID(activeOrg)) \(Self.oauthDebugSummary(oauth))"
+                )
                 return ClaudeDesktopCredentialResult(oauth: oauth, status: .available)
             case .stale:
+                AppLog.info(LogTag.auth("claude"), "desktop load: only stale tokens for org=\(Self.shortID(activeOrg))")
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .stale)
             case .notFound:
+                AppLog.info(LogTag.auth("claude"), "desktop load: no usable profile-scoped token for org=\(Self.shortID(activeOrg))")
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
             case .invalid:
+                AppLog.info(LogTag.auth("claude"), "desktop load: invalid cache entries for org=\(Self.shortID(activeOrg))")
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
             }
         } catch ClaudeDesktopCredentialError.permissionRequired {
+            AppLog.info(LogTag.auth("claude"), "desktop load: keychain permission required (manual refresh + Always Allow)")
             return ClaudeDesktopCredentialResult(oauth: nil, status: .permissionRequired)
         } catch {
             AppLog.error(LogTag.auth("claude"), "Claude Desktop credential read failed: \(error.localizedDescription)")
             return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
         }
+    }
+
+    /// Account UUID Claude Desktop persists separately from the org cookie — who is logged in, not which org is active.
+    private func loadLastKnownAccountUUID() -> String? {
+        guard let text = try? files.readTextIfPresent(path(Self.configRelativePath)),
+              let data = text.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let value = root["lastKnownAccountUuid"] as? String,
+              UUID(uuidString: value) != nil
+        else {
+            return nil
+        }
+        return value.lowercased()
+    }
+
+    /// Log-safe short UUID (`aaaaaaaa…bbbbbbbb`) — never the full id in spammy lines, never tokens.
+    private static func shortID(_ value: String?) -> String {
+        guard let value, value.count >= 13 else { return value ?? "<none>" }
+        return "\(value.prefix(8))…\(value.suffix(4))"
+    }
+
+    private static func oauthDebugSummary(_ oauth: ClaudeOAuth) -> String {
+        let sub = oauth.subscriptionType ?? "<nil>"
+        let tier = oauth.rateLimitTier ?? "<nil>"
+        let scopes = (oauth.scopes ?? []).joined(separator: " ")
+        let scopeLabel = scopes.isEmpty ? "<none>" : scopes
+        return "sub=\(sub) tier=\(tier) scopes=[\(scopeLabel)]"
+    }
+
+    private static func organizationIDs(in cache: [String: Any]?) -> [String] {
+        guard let cache else { return [] }
+        var orgs = Set<String>()
+        for key in cache.keys {
+            if let parsed = parseCacheKey(key) {
+                orgs.insert(parsed.organization)
+            }
+        }
+        return Array(orgs)
     }
 
     private func safeStorageKey(allowInteraction: Bool) throws -> Data? {
@@ -259,7 +324,17 @@ struct ClaudeDesktopAuthStore: Sendable {
     ) -> Selection {
         let normalizedOrg = activeOrganization.lowercased()
         let v2Candidates = candidates(in: v2, organization: normalizedOrg, now: now)
-        if let best = v2Candidates.available.max(by: { $0.expiresAt < $1.expiresAt }) {
+        if !v2Candidates.available.isEmpty {
+            AppLog.info(
+                LogTag.auth("claude"),
+                "desktop select: org=\(shortID(normalizedOrg)) cache=v2 candidates=[\(v2Candidates.available.map(\.debugLabel).joined(separator: "; "))]"
+            )
+        }
+        if let best = v2Candidates.available.max(by: { $0.rank < $1.rank }) {
+            AppLog.info(
+                LogTag.auth("claude"),
+                "desktop select: org=\(shortID(normalizedOrg)) winner=v2 \(best.debugLabel)"
+            )
             return .available(best.oauth)
         }
 
@@ -269,7 +344,17 @@ struct ClaudeDesktopAuthStore: Sendable {
             organization: normalizedOrg,
             now: now
         )
-        if let best = v1Candidates.available.max(by: { $0.expiresAt < $1.expiresAt }) {
+        if !v1Candidates.available.isEmpty {
+            AppLog.info(
+                LogTag.auth("claude"),
+                "desktop select: org=\(shortID(normalizedOrg)) cache=v1 candidates=[\(v1Candidates.available.map(\.debugLabel).joined(separator: "; "))]"
+            )
+        }
+        if let best = v1Candidates.available.max(by: { $0.rank < $1.rank }) {
+            AppLog.info(
+                LogTag.auth("claude"),
+                "desktop select: org=\(shortID(normalizedOrg)) winner=v1 \(best.debugLabel)"
+            )
             return .available(best.oauth)
         }
         if v2Candidates.sawStale || v1Candidates.sawStale { return .stale }
@@ -277,9 +362,45 @@ struct ClaudeDesktopAuthStore: Sendable {
         return .notFound
     }
 
+    /// The OAuth client ID Claude's production login (Claude Code / Desktop) mints full-scope tokens
+    /// under. Desktop's cache can hold several entries for one org — partial-scope leftovers from older
+    /// logins included — and this client is how Desktop itself resolves the active login.
+    private static let productionClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+    private static let inferenceScope = "user:inference"
+
     private struct Candidate {
         var oauth: ClaudeOAuth
+        var clientID: String
+        var scopes: [String]
         var expiresAt: Double
+
+        /// Selection order mirrors Desktop's own resolution instead of raw expiry: production client
+        /// with full scopes first, then any full-scope entry over bare `user:profile` leftovers, then
+        /// scope richness, with expiry only as the final tiebreak. A stale wrong-tier token with a
+        /// longer TTL must not outrank the current login.
+        var rank: (Int, Int, Int, Double) {
+            let hasFullScope = scopes.contains(ClaudeDesktopAuthStore.usageScope)
+                && scopes.contains(ClaudeDesktopAuthStore.inferenceScope)
+            let isProductionClient = clientID == ClaudeDesktopAuthStore.productionClientID
+            return (
+                isProductionClient && hasFullScope ? 1 : 0,
+                hasFullScope ? 1 : 0,
+                scopes.count,
+                expiresAt
+            )
+        }
+
+        /// Token-free label for selection logs (client prefix, scopes, stamped plan metadata, expiry).
+        var debugLabel: String {
+            let client = clientID.count >= 8 ? String(clientID.prefix(8)) : clientID
+            let sub = oauth.subscriptionType ?? "<nil>"
+            let tier = oauth.rateLimitTier ?? "<nil>"
+            let scopeText = scopes.joined(separator: "+")
+            let exp = expiresAt.isFinite
+                ? ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: expiresAt / 1000))
+                : "<nil>"
+            return "client=\(client) scopes=\(scopeText) sub=\(sub) tier=\(tier) exp=\(exp)"
+        }
     }
 
     private static func candidates(
@@ -321,12 +442,18 @@ struct ClaudeDesktopAuthStore: Sendable {
                 rateLimitTier: entry["rateLimitTier"] as? String,
                 scopes: parsedKey.scopes
             )
-            available.append(Candidate(oauth: oauth, expiresAt: expiresAt))
+            available.append(Candidate(
+                oauth: oauth,
+                clientID: parsedKey.clientID,
+                scopes: parsedKey.scopes,
+                expiresAt: expiresAt
+            ))
         }
         return (available, sawStale, sawInvalid)
     }
 
     private struct CacheKey {
+        var clientID: String
         var organization: String
         var apiHost: String
         var scopes: [String]
@@ -345,7 +472,7 @@ struct ClaudeDesktopAuthStore: Sendable {
         let scopes = value[markerRange.upperBound...]
             .split(whereSeparator: \.isWhitespace)
             .map(String.init)
-        return CacheKey(organization: organization, apiHost: apiHost, scopes: scopes)
+        return CacheKey(clientID: clientID, organization: organization, apiHost: apiHost, scopes: scopes)
     }
 
     private static func number(_ value: Any?) -> Double? {
