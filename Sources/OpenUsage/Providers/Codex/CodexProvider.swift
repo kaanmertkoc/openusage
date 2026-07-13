@@ -51,6 +51,11 @@ final class CodexProvider: ProviderRuntime {
             .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets", traySuffix: "resets", showsResetExpiries: true)
                 .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available")),
             .usageTrend(provider: provider)
+                .exportingHistory(
+                    scope: .machineLocal,
+                    estimatedCost: true,
+                    sourceNote: "From your Codex logs (estimated)"
+                )
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
@@ -133,7 +138,13 @@ final class CodexProvider: ProviderRuntime {
 
         // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced
         // through the shared pricing store. `scan` runs on the scanner actor, off the main actor.
+        var usageHistory: ProviderUsageHistory?
         if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
+            usageHistory = ProviderUsageHistory(
+                series: scan.series,
+                modelUsage: scan.modelUsage,
+                unknownModelsByDay: scan.unknownModelsByDay
+            )
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,
@@ -147,7 +158,13 @@ final class CodexProvider: ProviderRuntime {
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+        return ProviderSnapshot.make(
+            provider: provider,
+            plan: mapped.plan,
+            lines: mapped.lines,
+            refreshedAt: now(),
+            usageHistory: usageHistory
+        )
     }
 
     /// Fetches the on-demand reset-credit balance (and per-credit expiry) without ever failing the

@@ -56,6 +56,11 @@ final class ClaudeProvider: ProviderRuntime {
             .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
                 .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
             .usageTrend(provider: provider)
+                .exportingHistory(
+                    scope: .machineLocal,
+                    estimatedCost: true,
+                    sourceNote: "From your Claude usage history (estimated)"
+                )
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
@@ -164,7 +169,13 @@ final class ClaudeProvider: ProviderRuntime {
 
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
         // shared pricing store. `scan` runs on the scanner actor, off the main actor.
+        var usageHistory: ProviderUsageHistory?
         if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
+            usageHistory = ProviderUsageHistory(
+                series: scan.series,
+                modelUsage: scan.modelUsage,
+                unknownModelsByDay: scan.unknownModelsByDay
+            )
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,
@@ -178,7 +189,14 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now(), warning: warning)
+        return ProviderSnapshot.make(
+            provider: provider,
+            plan: mapped.plan,
+            lines: mapped.lines,
+            refreshedAt: now(),
+            usageHistory: usageHistory,
+            warning: warning
+        )
     }
 
     private func fetchLiveUsage(
