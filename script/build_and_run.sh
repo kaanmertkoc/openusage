@@ -14,8 +14,8 @@ set -euo pipefail
 # Usage: script/build_and_run.sh [run|build|logs|verify]
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        CONFIG             "release" (default) or "debug"
-#        ICLOUD_PROVISIONING_PROFILE  optional development provisioning profile with the
-#                         iCloud.com.robinebers.openusage.dev container capability
+#        ICLOUD_PROVISIONING_PROFILE  optional override for the development provisioning profile;
+#                         otherwise the newest matching installed profile is selected automatically
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
@@ -23,6 +23,7 @@ CONFIG="${CONFIG:-release}"
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
+ICLOUD_CONTAINER_ID="iCloud.com.robinebers.openusage.dev"
 MIN_SYSTEM_VERSION="15.0"
 APP_VERSION="0.7.0"
 APP_BUILD="0.7.0"
@@ -161,14 +162,25 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
+if [ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ] && [ ! -f "$ICLOUD_PROVISIONING_PROFILE" ]; then
+  echo "iCloud provisioning profile not found: $ICLOUD_PROVISIONING_PROFILE" >&2
+  exit 1
+fi
+
+if [ -z "${ICLOUD_PROVISIONING_PROFILE:-}" ]; then
+  ICLOUD_PROVISIONING_PROFILE=$("$ROOT_DIR/script/find_icloud_provisioning_profile.sh" \
+    "$BUNDLE_ID" "$ICLOUD_CONTAINER_ID" || true)
+fi
+
 if [ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ]; then
+  echo "==> using iCloud provisioning profile: $ICLOUD_PROVISIONING_PROFILE"
   cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
   SIGN_ENTITLEMENTS="$DIST_DIR/OpenUsage.dev.resolved.entitlements.plist"
   "$ROOT_DIR/script/render_icloud_entitlements.sh" \
     "$ENTITLEMENTS" "$ICLOUD_PROVISIONING_PROFILE" "$SIGN_ENTITLEMENTS" \
-    "iCloud.com.robinebers.openusage.dev"
+    "$ICLOUD_CONTAINER_ID"
 else
-  echo "WARNING: ICLOUD_PROVISIONING_PROFILE is unset; iCloud Sync will be unavailable in this build." >&2
+  echo "WARNING: no matching installed iCloud provisioning profile was found; iCloud Sync will be unavailable in this build." >&2
 fi
 
 # Pick a stable Apple Development identity so ad-hoc cdhash churn doesn't re-trigger

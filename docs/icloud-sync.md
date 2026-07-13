@@ -34,13 +34,18 @@ the app. OpenUsage uses separate resources so development builds cannot write pr
 - `com.robinebers.openusage` uses `iCloud.com.robinebers.openusage`.
 
 Create a `MAC_APP_DEVELOPMENT` profile that includes every registered development Mac and a
-`MAC_APP_DIRECT` profile for releases. Install the development profile on each included Mac, then
-pass its path when building:
+`MAC_APP_DIRECT` profile for releases. Install the development profile on each included Mac. The
+development build automatically selects the newest non-expired profile matching the development
+bundle and iCloud container from Xcode's current profile directory or the legacy MobileDevice
+directory:
 
 ```bash
-ICLOUD_PROVISIONING_PROFILE="$HOME/Library/MobileDevice/Provisioning Profiles/<uuid>.mobileprovision" \
-  ./script/build_and_run.sh
+./script/build_and_run.sh
 ```
+
+Set `ICLOUD_PROVISIONING_PROFILE=/path/to/profile.mobileprovision` only when you need to override
+that automatic selection. An explicit missing path fails the build instead of silently producing an
+app without iCloud access.
 
 The release workflow reads the base64-encoded `MAC_APP_DIRECT` profile from the repository Actions
 secret `APPLE_DEVELOPER_ID_ICLOUD_PROFILE`. Keep the original provisioning profiles and signing `.p12`
