@@ -5,8 +5,9 @@ A high-level map of how OpenUsage is put together, for people working on the cod
 
 ## The shape of the app
 
-OpenUsage is a single SwiftPM executable — there is no Xcode project. It's a menu-bar app: a SwiftUI
-interface hosted inside an AppKit status item and panel. The code is grouped by role:
+OpenUsage is a SwiftPM package with a shared module and two thin executables — there is no Xcode project.
+The main executable is a menu-bar app: a SwiftUI interface hosted inside an AppKit status item and panel.
+The code is grouped by role:
 
 - `App/` — startup and the AppKit bridge (status item, panel, the app entry point).
 - `Models/` — the small value types the rest of the app speaks in (`MetricLine`, `WidgetData`, descriptors).
@@ -22,6 +23,12 @@ interface hosted inside an AppKit status item and panel. The code is grouped by 
 providers, turns it into a `WidgetRegistry`, creates the stores, starts the periodic refresh loop, and
 starts the local HTTP API. Everything else receives what it needs from here rather than reaching for
 globals, which keeps the pieces testable in isolation.
+
+The `openusage` executable imports the same module. A normal invocation reads `ProviderSnapshotCache`
+and exits; `--force` constructs the canonical `ProviderCatalog` and calls `WidgetDataStore`'s forced
+refresh path before reading. Providers annotate the scalar resources they export through the stable
+limits contract; the CLI and `/v1/limits` share one serializer over those same normalized snapshots.
+It never launches the GUI or duplicates provider, auth, pricing, or mapping logic.
 
 ## The provider pipeline
 
