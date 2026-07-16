@@ -125,15 +125,21 @@ struct WidgetGroupedListView: View {
         // recomputed several times per row (twice per adjacent pair plus once in `row`).
         let providerID = group.provider.id
         let isExpanded = layout.isProviderExpanded(providerID)
-        let alwaysRows = resolvedRows(group.alwaysShownWidgets)
-        let expandedRows = resolvedRows(group.expandedWidgets)
+        // Personal build: once a provider has ANY real data, its "No data" placeholder rows hide
+        // instead of holding space (they reappear the moment the metric carries data). A provider
+        // with no data at all keeps its placeholders, so an unloaded/errored card never renders empty.
+        let allAlwaysRows = resolvedRows(group.alwaysShownWidgets)
+        let allExpandedRows = resolvedRows(group.expandedWidgets)
+        let hasAnyData = (allAlwaysRows + allExpandedRows).contains { $0.data.hasData }
+        let alwaysRows = hasAnyData ? allAlwaysRows.filter(\.data.hasData) : allAlwaysRows
+        let expandedRows = hasAnyData ? allExpandedRows.filter(\.data.hasData) : allExpandedRows
         // The caret separates Always Visible and On Demand rows, so text-row condensing should not
         // bridge across it. Each side tightens only against rows on the same side of the separator.
         let condensedIDs = visibleCondensedTextRowIDs(alwaysRows: alwaysRows, expandedRows: isExpanded ? expandedRows : [])
         let cardRows = metricCardRows(
             alwaysRows: alwaysRows,
             expandedRows: expandedRows,
-            hasExpandedMetrics: group.hasExpandedMetrics,
+            hasExpandedMetrics: !expandedRows.isEmpty,
             isExpanded: isExpanded,
             links: group.provider.visibleLinks
         )
@@ -334,9 +340,13 @@ struct WidgetGroupedListView: View {
         // The floating preview should match what the card shows: only the always-shown rows unless this
         // provider's caret is currently open.
         let visibleWidgets = layout.isProviderExpanded(group.provider.id) ? group.widgets : group.alwaysShownWidgets
-        let rows = visibleWidgets.compactMap { widget -> WidgetData? in
+        var rows = visibleWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
             return dataStore.data(for: descriptor)
+        }
+        // Match the live card's no-data filtering (above), so the floating drag preview can't drift.
+        if rows.contains(where: \.hasData) {
+            rows = rows.filter(\.hasData)
         }
         return ReorderLift.make(
             id: group.provider.id,

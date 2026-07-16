@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// Shared motion vocabulary so every transition feels consistent and "Apple-native".
+/// Personal build: tightened from upstream (spring response 0.42 → 0.28, modeSwitch 0.18 → 0.12)
+/// so the popover feels immediate instead of leisurely.
 enum Motion {
-    static let spring = Animation.spring(response: 0.42, dampingFraction: 0.80)
-    static let modeSwitch = Animation.easeInOut(duration: 0.18)
+    static let spring = Animation.spring(response: 0.28, dampingFraction: 0.85)
+    static let modeSwitch = Animation.easeInOut(duration: 0.12)
 }
 
 extension View {
