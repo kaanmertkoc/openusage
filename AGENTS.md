@@ -10,6 +10,17 @@ AGENTS.md is the source of truth for agent instructions in this repository. CLAU
 
 > **Repository note:** This is the native Swift edition of OpenUsage. Active development happens on the `main` branch. (NOT the legacy Tauri version which now sits in the `tauri-legacy` branch)
 
+## Personal fork (branch `personal-v2`) — READ FIRST
+
+This branch is Kaan's personal stripped build ported onto the Swift edition. `main` stays clean for upstream sync; all personal changes live here. Non-negotiable rules:
+
+- **No telemetry, ever.** PostHog (dependency, `Telemetry.swift`, `TelemetryRecorder`/`TelemetryStore`, Settings toggle) is removed on this branch. Never reintroduce any analytics/crash-reporting SDK when syncing upstream.
+- **No upstream updater.** Sparkle stays linked but permanently dormant: no `SUFeedURL`/`SUPublicEDKey` may ever be baked into a build of this branch. Do not run upstream's release pipeline for this fork.
+- **Local HTTP API stays off.** `localAPI.start()` is intentionally not called in `AppContainer` (the server object is constructed but never listens). Do not re-enable without explicit approval.
+- **Identity:** app name `OpenUsage Personal`, bundle id `com.kaanmertkoc.openusage.personal.v2` (set in `script/build_and_run.sh`). Keep it distinct from the legacy Tauri install (`com.kaanmertkoc.openusage.personal`) while both coexist.
+- **Upstream sync procedure:** merge `origin/main` into `personal-v2`, then re-verify this checklist: `grep -ri posthog Sources/ Package.swift` is empty, no `SUFeedURL` in build scripts' plists for this branch's flow, `localAPI.start()` absent, branding intact.
+- Simplicity first: personal-scope fixes over generalized product work; fail loud, no silent fallbacks; use `trash` for deletes; never delete files/data unless explicitly approved or part of a plan.
+
 ## Releases
 
 `main` is the active development line; it ships via `.github/workflows/release.yml` (Sparkle appcast on `gh-pages`). Cut releases with the release-swift skill.

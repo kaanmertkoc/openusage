@@ -21,8 +21,8 @@ MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
 
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
-APP_DISPLAY="OpenUsage"                 # user-facing app name
-BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
+APP_DISPLAY="OpenUsage Personal"        # user-facing app name
+BUNDLE_ID="${BUNDLE_ID:-com.kaanmertkoc.openusage.personal.v2}"
 ICLOUD_CONTAINER_ID="iCloud.com.robinebers.openusage.dev"
 MIN_SYSTEM_VERSION="15.0"
 APP_VERSION="0.7.0"

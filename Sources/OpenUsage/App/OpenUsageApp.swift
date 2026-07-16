@@ -75,10 +75,4 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         updater.start()
     }
 
-    /// Flush queued telemetry on quit. The SDK's lifecycle autocapture is off (we emit our own daily
-    /// rollups), so it won't auto-flush on termination — this explicit flush keeps low-frequency events
-    /// from being stranded across a clean quit.
-    public func applicationWillTerminate(_ notification: Notification) {
-        container?.telemetry.flush()
-    }
 }
