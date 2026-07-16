@@ -22,13 +22,19 @@ import Foundation
 actor ClaudeLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
+    /// Whether Cowork's per-session `.claude` sandboxes scan as additional roots. Off for the pinned
+    /// work-account tile — those sandboxes belong to the desktop app (the personal login), and
+    /// counting them under Work would double-book that usage across both tiles.
+    private let includeCoworkSandboxes: Bool
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        includeCoworkSandboxes: Bool = true
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.includeCoworkSandboxes = includeCoworkSandboxes
     }
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields
@@ -104,8 +110,10 @@ actor ClaudeLogUsageScanner {
             addIfValid(home.appendingPathComponent(".claude"))
         }
 
-        for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
-            addIfValid(sandbox)
+        if includeCoworkSandboxes {
+            for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
+                addIfValid(sandbox)
+            }
         }
         return roots
     }

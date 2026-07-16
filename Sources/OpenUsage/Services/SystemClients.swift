@@ -17,6 +17,21 @@ struct ProcessEnvironmentReader: EnvironmentReading {
     }
 }
 
+/// Wraps another environment reader, forcing specific variables to fixed values. A `nil` value in
+/// `overrides` means "treat as unset": the base reader is never consulted for an overridden name, so
+/// an ambient value (a terminal launch, a shell-profile export) cannot leak through. Used to pin the
+/// per-account Claude tiles to their own `CLAUDE_CONFIG_DIR` (see `ClaudeProvider.personalAccount()`
+/// / `.workAccount()`).
+struct OverriddenEnvironmentReader: EnvironmentReading {
+    var base: EnvironmentReading = ProcessEnvironmentReader()
+    var overrides: [String: String?]
+
+    func value(for name: String) -> String? {
+        if let pinned = overrides[name] { return pinned }
+        return base.value(for: name)
+    }
+}
+
 protocol TextFileAccessing: Sendable {
     func exists(_ path: String) -> Bool
     /// Read a UTF-8 file when it exists. `nil` means the path is absent; permission, encoding, and

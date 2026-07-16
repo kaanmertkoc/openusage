@@ -8,7 +8,9 @@ enum ProviderCatalog {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
         // then every other provider alphabetically by display name.
         [
-            ClaudeProvider(),
+            // Personal fork: both Claude accounts as pinned instances (see ClaudeAccounts.swift).
+            ClaudeProvider.personalAccount(),
+            ClaudeProvider.workAccount(),
             CodexProvider(),
             CursorProvider(),
             AntigravityProvider(),

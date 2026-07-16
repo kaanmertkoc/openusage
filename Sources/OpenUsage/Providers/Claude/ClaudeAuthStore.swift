@@ -169,19 +169,31 @@ struct ClaudeAuthStore: Sendable {
     var keychain: KeychainAccessing
     var desktop: ClaudeDesktopAuthStore
     var now: @Sendable () -> Date
+    /// Whether the Claude Desktop login may serve as a fallback credential source. Off for the
+    /// pinned work-account tile: Desktop is signed into one account and consulting it there would
+    /// silently mirror the wrong account's usage.
+    var desktopFallbackEnabled: Bool
+    /// Whether a `CLAUDE_CONFIG_DIR`-hashed keychain miss may fall back to the legacy unhashed
+    /// service. Off for the pinned work-account tile: the legacy entry belongs to the default
+    /// (personal) login, so falling back would show personal usage under the Work tile.
+    var allowsLegacyKeychainFallback: Bool
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
         desktop: ClaudeDesktopAuthStore? = nil,
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        desktopFallbackEnabled: Bool = true,
+        allowsLegacyKeychainFallback: Bool = true
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
         self.desktop = desktop ?? ClaudeDesktopAuthStore(files: files, now: now)
         self.now = now
+        self.desktopFallbackEnabled = desktopFallbackEnabled
+        self.allowsLegacyKeychainFallback = allowsLegacyKeychainFallback
     }
 
     /// All credential sources currently on disk/keychain, in fixed keychain-before-file order, for the
@@ -201,7 +213,7 @@ struct ClaudeAuthStore: Sendable {
         let hasUsableCLILogin = stored.contains {
             $0.hasUsableAccessToken && liveUsageAvailability($0) == .available
         }
-        if forceDesktopFallback || !hasUsableCLILogin {
+        if desktopFallbackEnabled, forceDesktopFallback || !hasUsableCLILogin {
             let result = desktop.load(allowInteraction: allowDesktopInteraction)
             desktopStatus = result.status
             if let oauth = result.oauth {
@@ -387,7 +399,8 @@ struct ClaudeAuthStore: Sendable {
         // credential loading stays forgiving even when a custom OAuth URL is malformed.
         let base = "\(Self.keychainServicePrefix)\(resolveOAuthEndpoints().suffix)-credentials"
         if let configDir = claudeHomeOverride() {
-            return ["\(base)-\(hashSuffix(configDir))", base]
+            let hashed = "\(base)-\(hashSuffix(configDir))"
+            return allowsLegacyKeychainFallback ? [hashed, base] : [hashed]
         }
         return [base]
     }

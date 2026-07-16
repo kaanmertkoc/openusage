@@ -12,6 +12,9 @@ enum DefaultLayout {
         "claude.session", "claude.weekly", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
+        "claude-work.session", "claude-work.weekly", "claude-work.trend",
+        "claude-work.extra", "claude-work.today", "claude-work.yesterday", "claude-work.last30",
+
         "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
@@ -80,6 +83,8 @@ enum DefaultLayout {
         // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay above the fold; spend-history
         // rows sit below the caret. Matches every other provider's "core above, history below" shape.
         "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",
+        "claude-work.sonnet", "claude-work.fable",
+        "claude-work.today", "claude-work.yesterday", "claude-work.last30",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.
         "codex.spark", "codex.sparkWeekly",
