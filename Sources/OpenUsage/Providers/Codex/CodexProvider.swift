@@ -15,6 +15,7 @@ final class CodexProvider: ProviderRuntime {
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
     let logUsageScanner: CodexLogUsageScanner
+    let openCodeUsageScanner: OpenCodeOpenAIUsageScanner
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -22,12 +23,14 @@ final class CodexProvider: ProviderRuntime {
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
+        openCodeUsageScanner: OpenCodeOpenAIUsageScanner = OpenCodeOpenAIUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
+        self.openCodeUsageScanner = openCodeUsageScanner
         self.now = now
         self.pricing = pricing
     }
@@ -137,16 +140,19 @@ final class CodexProvider: ProviderRuntime {
         var mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
 
         // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced through
-        // the shared pricing store, merged with Codex usage that happened inside pi (attributed back
-        // here). Both scans run on their scanner actors, off the main actor.
+        // the shared pricing store, merged with Codex usage that happened inside pi or OpenCode
+        // (both attributed back here — they consume the same ChatGPT plan these meters track).
+        // All scans run on their scanner actors, off the main actor.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        let openCodeScan = await openCodeUsageScanner.scan(now: now(), pricing: pricing)
         var usageHistory: ProviderUsageHistory?
-        if let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
-            let note = piScan == nil
-                ? "From your Codex logs (estimated)"
-                : "From your Codex logs and pi (estimated)"
+        if let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
+            var sources = ["your Codex logs"]
+            if openCodeScan != nil { sources.append("opencode") }
+            if piScan != nil { sources.append("pi") }
+            let note = "From \(sources.joined(separator: " and ")) (estimated)"
             usageHistory = ProviderUsageHistory(
                 series: scan.series,
                 modelUsage: scan.modelUsage,
