@@ -14,8 +14,7 @@ enum AboutPanel {
         NSApplication.shared.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 
-    /// Centered, secondary-styled credits with the same two links as the rest of the app: the author's
-    /// page and the GitHub repo. The standard panel renders `.link`-attributed runs as clickable.
+    /// Personal build: plain credits, no author/support links (fork doctrine — see AGENTS.md).
     private static var credits: NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
@@ -26,23 +25,9 @@ enum AboutPanel {
             .paragraphStyle: paragraph,
         ]
 
-        let credits = NSMutableAttributedString()
-        credits.append(NSAttributedString(string: "Created by ", attributes: base))
-        credits.append(link("Robin Ebers", "https://itsbyrob.in/x", base: base))
-        credits.append(NSAttributedString(string: "\nMaintained also by ", attributes: base))
-        credits.append(link("Mert", "https://github.com/validatedev", base: base))
-        credits.append(NSAttributedString(string: " & ", attributes: base))
-        credits.append(link("David", "https://github.com/davidarny", base: base))
-        credits.append(NSAttributedString(string: "\n\nOpen source on ", attributes: base))
-        credits.append(link("GitHub", "https://github.com/robinebers/openusage", base: base))
-        return credits
-    }
-
-    private static func link(_ text: String, _ urlString: String, base: [NSAttributedString.Key: Any]) -> NSAttributedString {
-        var attributes = base
-        if let url = URL(string: urlString) {
-            attributes[.link] = url
-        }
-        return NSAttributedString(string: text, attributes: attributes)
+        return NSAttributedString(
+            string: "Personal local build.\nTelemetry, upstream updates, and support links are disabled.",
+            attributes: base
+        )
     }
 }

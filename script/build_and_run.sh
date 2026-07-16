@@ -21,7 +21,7 @@ MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
 
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
-APP_DISPLAY="OpenUsage Personal"        # user-facing app name
+APP_DISPLAY="OpenUsage Personal v2"     # distinct from the installed Tauri app while both coexist
 BUNDLE_ID="${BUNDLE_ID:-com.kaanmertkoc.openusage.personal.v2}"
 ICLOUD_CONTAINER_ID="iCloud.com.robinebers.openusage.dev"
 MIN_SYSTEM_VERSION="15.0"
@@ -189,6 +189,12 @@ CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 if [ -z "$CODESIGN_IDENTITY" ]; then
   CODESIGN_IDENTITY=$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null \
     | /usr/bin/awk -F\" '/Apple Development:/ { print $2; exit }')
+fi
+# "-" means ad-hoc: route it through the ad-hoc branch below. Ad-hoc must NOT get
+# "--options runtime" — hardened-runtime library validation rejects teamless (ad-hoc)
+# embedded frameworks, so the app would crash at launch loading Sparkle.
+if [ "$CODESIGN_IDENTITY" = "-" ]; then
+  CODESIGN_IDENTITY=""
 fi
 
 # Embed + sign Sparkle.framework before sealing the app. The executable links Sparkle, so without the
