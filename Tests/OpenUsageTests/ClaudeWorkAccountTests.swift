@@ -70,4 +70,42 @@ struct ClaudeWorkAccountTests {
         #expect(ids.contains("claude-work.weekly"))
         #expect(!ids.contains { $0.hasPrefix("claude.") })
     }
+
+    /// The cross-launch parse cache (#1017) replaces a whole identity's records with the file set the
+    /// scan just saw, so two scanners sharing an identity but reading different files would evict each
+    /// other every refresh — parsing everything from scratch forever instead of caching. The two pinned
+    /// tiles must therefore never collide.
+    @Test func pinnedAccountsUseSeparateParseCacheIdentities() async {
+        let home = URL(fileURLWithPath: "/Users/kaankoc")
+        let personal = ClaudeLogUsageScanner(
+            environment: OverriddenEnvironmentReader(
+                base: FakeEnvironment([:]), overrides: ["CLAUDE_CONFIG_DIR": String?.none]
+            ),
+            homeDirectory: { home }
+        )
+        let work = ClaudeLogUsageScanner(
+            environment: OverriddenEnvironmentReader(
+                base: FakeEnvironment([:]), overrides: ["CLAUDE_CONFIG_DIR": workDir]
+            ),
+            homeDirectory: { home },
+            includeCoworkSandboxes: false
+        )
+        #expect(await personal.parseCacheIdentity() != work.parseCacheIdentity())
+    }
+
+    /// `includeCoworkSandboxes` changes which roots are scanned without changing any path the identity
+    /// is otherwise derived from, so it has to be part of the key on its own. Turning it off must move
+    /// the scanner to a different namespace even when everything else matches.
+    @Test func coworkSandboxFlagSplitsTheParseCacheIdentity() async {
+        let home = URL(fileURLWithPath: "/Users/kaankoc")
+        let withSandboxes = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home }
+        )
+        let withoutSandboxes = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home }, includeCoworkSandboxes: false
+        )
+        #expect(await withSandboxes.parseCacheIdentity() != withoutSandboxes.parseCacheIdentity())
+        // The default stays byte-identical to upstream's, so no existing cache is orphaned by the split.
+        #expect(await !withSandboxes.parseCacheIdentity().contains("cowork="))
+    }
 }

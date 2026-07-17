@@ -148,7 +148,9 @@ final class CodexProvider: ProviderRuntime {
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
         let openCodeScan = await openCodeUsageScanner.scan(now: now(), pricing: pricing)
         var usageHistory: ProviderUsageHistory?
-        if let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
+        // Cancellation can land between the native, pi, and opencode scans. Treat them as one unit so
+        // a partial result cannot replace the last-good combined history in WidgetDataStore.
+        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
             var sources = ["your Codex logs"]
             if openCodeScan != nil { sources.append("opencode") }
             if piScan != nil { sources.append("pi") }
