@@ -669,10 +669,70 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(store.data(for: descriptor).valueText, "20%")
     }
 
+    func testPerProviderForceRefreshSupersedesStuckRefresh() async {
+        let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("codex"))
+        let descriptor = WidgetDescriptor(
+            id: "test.session",
+            providerID: provider.id,
+            metricLabel: "Session",
+            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+        )
+        let runtime = RestartableProviderRuntime(provider: provider, descriptors: [descriptor])
+        let defaults = makeUserDefaults("force-restart")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600),
+            defaults: defaults
+        )
+
+        let stuckRefresh = Task { await store.refresh(providerID: provider.id, force: true) }
+        while runtime.refreshCount == 0 { await Task.yield() }
+
+        let replacementOutcome = await store.forceRefresh(providerID: provider.id)
+        let stuckOutcome = await stuckRefresh.value
+
+        XCTAssertEqual(runtime.refreshCount, 2)
+        XCTAssertEqual(replacementOutcome, .refreshed)
+        XCTAssertEqual(stuckOutcome, .skipped)
+        XCTAssertEqual(store.data(for: descriptor).used, 80)
+        XCTAssertTrue(store.refreshingProviderIDs.isEmpty)
+    }
+
     private func makeUserDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
+    }
+}
+
+@MainActor
+private final class RestartableProviderRuntime: ProviderRuntime {
+    let provider: Provider
+    let widgetDescriptors: [WidgetDescriptor]
+    private(set) var refreshCount = 0
+
+    init(provider: Provider, descriptors: [WidgetDescriptor]) {
+        self.provider = provider
+        self.widgetDescriptors = descriptors
+    }
+
+    func refresh() async -> ProviderSnapshot {
+        refreshCount += 1
+        let attempt = refreshCount
+        if attempt == 1 {
+            try? await Task.sleep(for: .seconds(60))
+        }
+        return ProviderSnapshot(
+            providerID: provider.id,
+            displayName: provider.displayName,
+            lines: [.progress(
+                label: "Session",
+                used: attempt == 1 ? 10 : 80,
+                limit: 100,
+                format: .percent
+            )]
+        )
     }
 }

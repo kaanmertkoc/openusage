@@ -51,6 +51,9 @@ struct WidgetGroupedListView: View {
             warning: dataStore.headerNotice(for: group.provider.id),
             refreshing: dataStore.refreshingProviderIDs.contains(group.provider.id),
             staleness: dataStore.stalenessHint(for: group.provider.id),
+            onRefresh: {
+                Task { await dataStore.forceRefresh(providerID: group.provider.id) }
+            },
             onCopyScreenshot: { shareCard(group) }
         )
         // Keep the provider mark and hover-revealed copy control aligned with the card's content edges.
@@ -64,7 +67,7 @@ struct WidgetGroupedListView: View {
             }
             Divider()
             Button("Refresh \(group.provider.displayName)") {
-                Task { await dataStore.refresh(providerID: group.provider.id, force: true) }
+                Task { await dataStore.forceRefresh(providerID: group.provider.id) }
             }
             Button("Customize…") {
                 openCustomize(for: group.provider.id)
@@ -266,7 +269,7 @@ struct WidgetGroupedListView: View {
         Divider()
         if let provider = layout.provider(id: providerID) {
             Button("Refresh \(provider.displayName)") {
-                Task { await dataStore.refresh(providerID: providerID, force: true) }
+                Task { await dataStore.forceRefresh(providerID: providerID) }
             }
         }
         Button("Customize…") {

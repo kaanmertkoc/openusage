@@ -65,6 +65,10 @@ final class WidgetDataStore {
     /// Per-provider earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
     /// observable UI state, so it's excluded from `@Observable` tracking.
     @ObservationIgnored private var failureRetryAfter: [String: Date] = [:]
+    /// The active task/token for each provider. A manual per-provider force refresh can cancel and
+    /// supersede a stuck task; the token prevents that old task from later overwriting fresh data.
+    @ObservationIgnored private var refreshTasks: [String: Task<ProviderSnapshot, Never>] = [:]
+    @ObservationIgnored private var refreshTokens: [String: UUID] = [:]
 
     /// Owns the quota pace-notification subsystem (dedup state, fire/deliver decision, trace). This store
     /// just gathers each pass's enabled bounded metrics and delegates.
@@ -217,6 +221,32 @@ final class WidgetDataStore {
         force: Bool = false,
         notifyHistoryChange: Bool = true
     ) async -> RefreshOutcome {
+        await performRefresh(
+            providerID: providerID,
+            force: force,
+            notifyHistoryChange: notifyHistoryChange,
+            restartIfInFlight: false
+        )
+    }
+
+    /// Force one provider to start over immediately. Unlike a normal forced refresh, this replaces an
+    /// in-flight attempt so the user can recover a provider whose network/auth request appears stuck.
+    @discardableResult
+    func forceRefresh(providerID: String) async -> RefreshOutcome {
+        await performRefresh(
+            providerID: providerID,
+            force: true,
+            notifyHistoryChange: true,
+            restartIfInFlight: true
+        )
+    }
+
+    private func performRefresh(
+        providerID: String,
+        force: Bool,
+        notifyHistoryChange: Bool,
+        restartIfInFlight: Bool
+    ) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
         if !force, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
@@ -238,17 +268,39 @@ final class WidgetDataStore {
         }
 
         guard let provider = providersByID[providerID] else { return .skipped }
-        // Skip if an in-flight refresh already owns this provider (e.g. the background timer racing the
-        // first popover open), so we never fire duplicate network calls for the same provider.
-        guard !refreshingProviderIDs.contains(providerID) else {
-            AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
-            return .skipped
+        // Background/batch refreshes never duplicate an in-flight request. A direct user force refresh
+        // replaces it instead, which is the escape hatch for a request that appears stuck.
+        if let activeTask = refreshTasks[providerID] {
+            guard restartIfInFlight else {
+                AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
+                return .skipped
+            }
+            AppLog.info(.refresh, "force restart \(providerID) (cancelling in-flight refresh)")
+            activeTask.cancel()
         }
+
+        let refreshToken = UUID()
+        let refreshTask = Task { @MainActor in
+            await ProviderRefreshContext.$isManual.withValue(force) {
+                await provider.refresh()
+            }
+        }
+        refreshTokens[providerID] = refreshToken
+        refreshTasks[providerID] = refreshTask
         refreshingProviderIDs.insert(providerID)
-        defer { refreshingProviderIDs.remove(providerID) }
+        defer {
+            // A superseded task must not clear the replacement task's spinner or ownership.
+            if refreshTokens[providerID] == refreshToken {
+                refreshTokens[providerID] = nil
+                refreshTasks[providerID] = nil
+                refreshingProviderIDs.remove(providerID)
+            }
+        }
         let start = Date()
-        var snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
-            await provider.refresh()
+        var snapshot = await refreshTask.value
+        guard refreshTokens[providerID] == refreshToken else {
+            AppLog.debug(.refresh, "ignored superseded refresh result for \(providerID)")
+            return .skipped
         }
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         if let message = Self.errorMessage(in: snapshot) {

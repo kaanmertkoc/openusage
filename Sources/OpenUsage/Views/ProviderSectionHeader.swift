@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Shared provider section header used by the dashboard and its lifted provider-reorder preview.
 /// The provider mark and name lead, followed by the optional plan badge. Dashboard callers supply a
-/// screenshot-copy action, revealed at the trailing edge while the header is hovered. Callers can also
+/// refresh and screenshot-copy actions, revealed at the trailing edge while the header is hovered. Callers can also
 /// supply an optional `warning` — the latest refresh error, rendered as a small amber
 /// triangle beside the name whose hover tooltip carries the message (e.g. "Not logged in. Run `codex`
 /// to authenticate."). The
@@ -24,6 +24,9 @@ struct ProviderSectionHeader: View {
     /// Dashboard-only screenshot action. The reorder preview omits it, while Customize uses its own
     /// row type and is unaffected by this header.
     var onCopyScreenshot: (() -> Bool)?
+    /// Dashboard-only provider refresh. It stays visible while refreshing so a stuck attempt can be
+    /// restarted directly from the provider header.
+    var onRefresh: (() -> Void)?
 
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
@@ -38,6 +41,7 @@ struct ProviderSectionHeader: View {
         warning: String? = nil,
         refreshing: Bool = false,
         staleness: StalenessHint? = nil,
+        onRefresh: (() -> Void)? = nil,
         onCopyScreenshot: (() -> Bool)? = nil
     ) {
         self.provider = provider
@@ -45,6 +49,7 @@ struct ProviderSectionHeader: View {
         self.warning = warning
         self.refreshing = refreshing
         self.staleness = staleness
+        self.onRefresh = onRefresh
         self.onCopyScreenshot = onCopyScreenshot
     }
 
@@ -94,6 +99,21 @@ struct ProviderSectionHeader: View {
                     .accessibilityLabel(warning)
             }
             Spacer(minLength: 8)
+            if let onRefresh {
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(-6)
+                .opacity(isHovered || refreshing ? 1 : 0)
+                .allowsHitTesting(isHovered || refreshing)
+                .animation(.easeOut(duration: 0.12), value: isHovered)
+                .accessibilityLabel("Force Refresh \(provider.displayName)")
+            }
             if let onCopyScreenshot {
                 CopyFeedbackButton(
                     accessibilityLabel: "Copy \(provider.displayName) Screenshot",
