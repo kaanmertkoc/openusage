@@ -209,6 +209,9 @@ final class LocalLimitsAPITests: XCTestCase {
         let expected: [String: Set<String>] = [
             "claude": ["session", "weekly", "sonnet", "fable", "extraUsage"],
             "claude-work": ["session", "weekly", "sonnet", "fable", "extraUsage"],
+            // The server1 remote tiles export no limit resources: history-only, no caps.
+            "claude-server1": [],
+            "opencode-server1": [],
             "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "creditValue", "rateLimitResets"],
             "cursor": ["totalUsage", "autoUsage", "apiUsage", "onDemand", "requests", "credits"],
             "antigravity": ["geminiSession", "geminiWeekly", "nonGeminiSession", "nonGeminiWeekly"],

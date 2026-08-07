@@ -15,6 +15,8 @@ enum DefaultLayout {
         "claude-work.session", "claude-work.weekly", "claude-work.trend",
         "claude-work.extra", "claude-work.today", "claude-work.yesterday", "claude-work.last30",
 
+        "claude-server1.today", "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
+
         "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
@@ -31,6 +33,8 @@ enum DefaultLayout {
 
         "opencode.session", "opencode.weekly", "opencode.monthly", "opencode.trend",
         "opencode.today", "opencode.yesterday", "opencode.last30",
+
+        "opencode-server1.today", "opencode-server1.yesterday", "opencode-server1.last30", "opencode-server1.trend",
 
         "openrouter.credits", "openrouter.balance",
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
@@ -85,6 +89,9 @@ enum DefaultLayout {
         "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",
         "claude-work.sonnet", "claude-work.fable",
         "claude-work.today", "claude-work.yesterday", "claude-work.last30",
+        // Server1 remote tiles: Today stays above the fold; the rest sits below the caret.
+        "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
+        "opencode-server1.yesterday", "opencode-server1.last30", "opencode-server1.trend",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.
         "codex.spark", "codex.sparkWeekly",

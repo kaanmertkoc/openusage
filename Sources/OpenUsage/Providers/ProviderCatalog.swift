@@ -8,9 +8,11 @@ enum ProviderCatalog {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
         // then every other provider alphabetically by display name.
         [
-            // Personal fork: both Claude accounts as pinned instances (see ClaudeAccounts.swift).
+            // Personal fork: both Claude accounts as pinned instances (see ClaudeAccounts.swift),
+            // plus the server1 remote tiles right after their local counterparts (RemoteServer/).
             ClaudeProvider.personalAccount(),
             ClaudeProvider.workAccount(),
+            ClaudeServerProvider(),
             CodexProvider(),
             CursorProvider(),
             AntigravityProvider(),
@@ -18,6 +20,7 @@ enum ProviderCatalog {
             DevinProvider(),
             GrokProvider(),
             OpenCodeProvider(),
+            OpenCodeServerProvider(),
             OpenRouterProvider(),
             ZAIProvider()
         ]
