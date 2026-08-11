@@ -24,8 +24,8 @@ import Foundation
 /// - A `token_count` line whose cumulative `total_token_usage` is unchanged from the previous line
 ///   is a re-emitted stale snapshot, not new usage, and is skipped even when it carries a
 ///   `last_token_usage`.
-/// - Early sessions without model metadata fall back to `gpt-5`; the retired `codex-auto-review`
-///   slug maps to the codex model that was current at the line's date.
+/// - Early sessions without model metadata fall back to `gpt-5`. The `codex-auto-review` slug stays
+///   visible in usage breakdowns and carries a dated fallback model only for cost estimation.
 /// - Identical events (same timestamp + model + token counts) appearing in multiple files (copied
 ///   session logs) count once.
 /// - Cost per event: `(input - cached) x input rate + cached x cache-read rate + output x output
@@ -56,6 +56,7 @@ actor CodexLogUsageScanner {
     struct Event: Sendable, Equatable {
         var timestamp: Date
         var model: String
+        var pricingModel: String? = nil
         var input: Int
         var cached: Int
         var output: Int
@@ -234,13 +235,13 @@ actor CodexLogUsageScanner {
             let parsedModel = modelName(in: payload) ?? info.flatMap(modelName(in:))
             let model = resolveModel(
                 parsed: parsedModel,
-                timestamp: timestampRaw,
                 currentModel: &currentModel
             )
 
             events.append(Event(
                 timestamp: timestamp,
                 model: model,
+                pricingModel: model == Self.autoReviewModel ? autoReviewFallback(at: timestampRaw) : nil,
                 input: usage.input,
                 cached: min(usage.cached, usage.input),
                 output: usage.output,
@@ -374,13 +375,10 @@ actor CodexLogUsageScanner {
         }
     }
 
-    /// ccusage's model resolution: an explicit model on the line updates the session's current
-    /// model; otherwise the tracked model applies; a session with no metadata at all falls back to
-    /// `gpt-5`. The retired `codex-auto-review` slug maps to whichever codex model was current at
-    /// the line's date.
+    /// An explicit model on the line updates the session's current model. Otherwise the tracked
+    /// model applies, and a session with no metadata falls back to `gpt-5`.
     static func resolveModel(
         parsed: String?,
-        timestamp: String,
         currentModel: inout String?
     ) -> String {
         if let parsed {
@@ -394,9 +392,6 @@ actor CodexLogUsageScanner {
         } else {
             currentModel = "gpt-5"
             model = "gpt-5"
-        }
-        if model == Self.autoReviewModel {
-            model = autoReviewFallback(at: timestamp)
         }
         return model
     }
@@ -428,6 +423,7 @@ actor CodexLogUsageScanner {
     private struct EventKey: Hashable {
         var timestamp: Date
         var model: String
+        var pricingModel: String?
         var input: Int
         var cached: Int
         var output: Int
@@ -451,7 +447,7 @@ actor CodexLogUsageScanner {
 
         for event in events where event.timestamp >= since {
             let key = EventKey(
-                timestamp: event.timestamp, model: event.model, input: event.input,
+                timestamp: event.timestamp, model: event.model, pricingModel: event.pricingModel, input: event.input,
                 cached: event.cached, output: event.output, reasoning: event.reasoning, total: event.total
             )
             guard seen.insert(key).inserted else { continue }
@@ -464,7 +460,8 @@ actor CodexLogUsageScanner {
             guard let model = trimmedModel else {
                 continue
             }
-            let canonicalModel = pricing.supplement.canonicalName(for: model) ?? model
+            let pricingModel = event.pricingModel ?? model
+            let canonicalModel = pricing.supplement.canonicalName(for: pricingModel) ?? pricingModel
             let isFastAlias = canonicalModel.hasSuffix("-fast")
             let rateModel = isFastAlias ? String(canonicalModel.dropLast("-fast".count)) : canonicalModel
 
@@ -473,7 +470,7 @@ actor CodexLogUsageScanner {
             // If a third-party fast-only model has no base entry, retain its already-scaled rate
             // and do not apply a second speed multiplier.
             let baseRates = pricing.resolve(model: rateModel)
-            let resolvedRates = baseRates ?? pricing.resolve(model: model)
+            let resolvedRates = baseRates ?? pricing.resolve(model: pricingModel)
             guard let rates = resolvedRates else {
                 if event.total > 0 {
                     accumulator.addUnknownModel(day: day, model: model)
