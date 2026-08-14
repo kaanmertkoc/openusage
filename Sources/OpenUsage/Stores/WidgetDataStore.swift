@@ -24,6 +24,8 @@ final class WidgetDataStore {
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
     /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
     private let now: () -> Date
+    /// See `defaultProviderRefreshTimeout`. Injected so tests can drive the deadline in milliseconds.
+    private let providerRefreshTimeout: TimeInterval
     /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
@@ -44,6 +46,17 @@ final class WidgetDataStore {
     /// 5-minute heartbeat always retries; it only suppresses the sub-interval re-probes a wake burst
     /// would cause. The manual `force` refresh (⌘R) always bypasses it.
     private static let failureRetryBackoff: TimeInterval = 60
+    /// Hard deadline for a single provider's `refresh()` call. If the provider hasn't returned by then
+    /// the refresh is cancelled, the spinner stops, and the failure is surfaced like any other error.
+    ///
+    /// This is a last-resort backstop for a provider that hangs (a subprocess that never exits, a
+    /// credential read that blocks) — not a latency budget. It must therefore sit well above the sum of
+    /// the per-request timeouts a healthy provider can legitimately spend, or a slow network would turn
+    /// working providers into errors. The worst legitimate case is Cursor, whose probe is sequential:
+    /// token refresh (15s) → usage (10s, plus a 401 refresh-and-retry of another 25s) → plan (10s) →
+    /// usage summary (10s) → credits (10s) → usage CSV (30s), i.e. up to ~110s. Slowness short of the
+    /// deadline is already reported separately by `slowProviderRefreshThreshold`.
+    static let defaultProviderRefreshTimeout: TimeInterval = 120
 
     /// Rendered snapshots consumed by every UI/API surface. Equal to `localSnapshots` when iCloud sync
     /// is off; machine-local history rows are rebuilt from the union while sync is on.
@@ -110,9 +123,11 @@ final class WidgetDataStore {
         isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         now: @escaping () -> Date = Date.init,
+        providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
         postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
     ) {
+        precondition(providerRefreshTimeout > 0)
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
         self.cache = cache
@@ -120,6 +135,7 @@ final class WidgetDataStore {
         self.isProviderEnabled = isProviderEnabled
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
         self.now = now
+        self.providerRefreshTimeout = providerRefreshTimeout
         self.notificationSettings = notificationSettings
         self.postNotification = postNotification
             ?? { idPrefix, title, subtitle, body in
@@ -297,7 +313,20 @@ final class WidgetDataStore {
             }
         }
         let start = Date()
-        var snapshot = await refreshTask.value
+        // A provider that never returns would otherwise hold the in-flight entry — and the spinner —
+        // forever. Past the deadline, stop waiting and treat it as any other failed refresh.
+        guard var snapshot = await ProviderRefreshDeadline.snapshot(
+            of: refreshTask,
+            timeout: providerRefreshTimeout
+        ) else {
+            // A superseded task's timeout must not stomp the replacement's state.
+            guard refreshTokens[providerID] == refreshToken else { return .skipped }
+            providerErrors[providerID] = "Refresh timed out after \(Int(providerRefreshTimeout))s"
+            failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
+            AppLog.warn(.refresh, "\(providerID) timed out after \(Int(providerRefreshTimeout))s")
+            onRefreshOutcome?(providerID, .failed, .network, force)
+            return .failed
+        }
         guard refreshTokens[providerID] == refreshToken else {
             AppLog.debug(.refresh, "ignored superseded refresh result for \(providerID)")
             return .skipped
