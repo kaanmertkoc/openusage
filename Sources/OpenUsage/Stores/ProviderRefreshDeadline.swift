@@ -13,24 +13,12 @@ import os
 /// cancellation-aware). What the deadline guarantees is that the *store* stops waiting.
 @MainActor
 enum ProviderRefreshDeadline {
-    /// The refreshed snapshot, or `nil` if `timeout` elapsed first.
-    static func snapshot(
-        from provider: ProviderRuntime,
-        force: Bool,
-        timeout: TimeInterval
-    ) async -> ProviderSnapshot? {
-        await snapshot(
-            of: Task { @MainActor in
-                await ProviderRefreshContext.$isManual.withValue(force) {
-                    await provider.refresh()
-                }
-            },
-            timeout: timeout
-        )
-    }
-
-    /// Bounds a refresh task the caller already owns. The store keeps a handle on it so a manual force
-    /// refresh can cancel and replace an in-flight request; the deadline still stops the wait.
+    /// Bounds a refresh task the caller already owns, returning its snapshot or `nil` if `timeout`
+    /// elapsed first.
+    ///
+    /// Upstream builds the task in here from the provider. This fork's store owns it instead, so a
+    /// manual force refresh can cancel and replace an in-flight request (see `WidgetDataStore`'s
+    /// `refreshTasks`); the deadline still bounds the wait either way.
     static func snapshot(
         of work: Task<ProviderSnapshot, Never>,
         timeout: TimeInterval
