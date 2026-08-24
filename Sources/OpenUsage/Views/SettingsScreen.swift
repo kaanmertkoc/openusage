@@ -12,6 +12,7 @@ import UserNotifications
 /// (auto-check, beta channel, and a full-width manual check button).
 struct SettingsScreen: View {
     @Environment(AppContainer.self) private var container
+    @Environment(LayoutStore.self) private var layout
     @Environment(UpdaterController.self) private var updater
 
     @State private var launchAtLogin = LaunchAtLoginSetting()
@@ -29,6 +30,8 @@ struct SettingsScreen: View {
     /// System Settings after re-enabling).
     private enum NotificationsAuthState { case authorized, denied, notDetermined }
     @State private var notificationsAuth: NotificationsAuthState = .authorized
+    /// Settings stays mounted between visits, so explicitly restore its previous scroll-to-top behavior.
+    @State private var scrollPosition = ScrollPosition(edge: .top)
 
     /// Fills the region the dashboard's pinned footer leaves. Same scroller treatment as Customize:
     /// the overlay scroller stays (the scroll edge effect needs it) but is invisible.
@@ -36,6 +39,7 @@ struct SettingsScreen: View {
         PopoverScrollView {
             content
         }
+        .scrollPosition($scrollPosition)
     }
 
     private var content: some View {
@@ -66,7 +70,7 @@ struct SettingsScreen: View {
                 }
                 // Click-to-record field; its ⓧ clears the combo and disables the shortcut.
                 row("Global Shortcut") {
-                    ShortcutRecorderField(name: .togglePopover)
+                    ShortcutRecorderField(name: .togglePopover, isVisible: layout.screen == .settings)
                         .hoverTooltip("Open OpenUsage from anywhere")
                 }
             }
@@ -193,7 +197,17 @@ struct SettingsScreen: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .task { await refreshNotificationsAuth() }
+        .onChange(of: layout.screen) { _, screen in
+            if screen == .settings {
+                scrollPosition.scrollTo(edge: .top)
+                launchAtLogin.refreshStatus()
+                commandLineTool.refreshStatus()
+                Task { await refreshNotificationsAuth() }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard layout.screen == .settings else { return }
+            launchAtLogin.refreshStatus()
             commandLineTool.refreshStatus()
             Task { await refreshNotificationsAuth() }
         }
