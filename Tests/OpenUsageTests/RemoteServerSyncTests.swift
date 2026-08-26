@@ -14,24 +14,47 @@ final class RemoteServerSyncTests: XCTestCase {
         try FileManager.default.removeItem(at: root)
     }
 
-    private func writeMarker(_ contents: String) throws {
-        try contents.write(to: root.appendingPathComponent(".last-sync"), atomically: true, encoding: .utf8)
+    private func writeMarker(_ contents: String, leg: RemoteServerSync.Leg = .claude) throws {
+        let dir = root.appendingPathComponent(leg.rawValue)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try contents.write(to: dir.appendingPathComponent(".last-sync"), atomically: true, encoding: .utf8)
     }
 
     func testMissingMarkerReadsAsNeverSynced() {
-        XCTAssertNil(RemoteServerSync.lastSyncDate(root: root))
+        XCTAssertNil(RemoteServerSync.lastSyncDate(root: root, leg: .claude))
     }
 
     func testParsesTheSyncScriptTimestampFormat() throws {
         // scripts/remote-sync.sh writes `date -u +"%Y-%m-%dT%H:%M:%SZ"` plus a trailing newline.
         try writeMarker("2026-08-07T12:56:54Z\n")
-        let parsed = RemoteServerSync.lastSyncDate(root: root)
+        let parsed = RemoteServerSync.lastSyncDate(root: root, leg: .claude)
         XCTAssertEqual(parsed, OpenUsageISO8601.date(from: "2026-08-07T12:56:54Z"))
     }
 
     func testGarbageMarkerReadsAsNeverSynced() throws {
         try writeMarker("not a timestamp")
-        XCTAssertNil(RemoteServerSync.lastSyncDate(root: root))
+        XCTAssertNil(RemoteServerSync.lastSyncDate(root: root, leg: .claude))
+    }
+
+    /// Regression: the two legs of the sync each carry their own marker. They used to share one
+    /// host-level `.last-sync`, so a failing opencode rsync (the 2.5 GB database timing out) made the
+    /// Claude tile claim staleness even though its own leg had just synced.
+    func testLegMarkersAreReadIndependently() throws {
+        try writeMarker("2026-08-07T12:56:54Z\n", leg: .claude)
+        try writeMarker("2026-08-07T09:00:00Z\n", leg: .opencode)
+        XCTAssertEqual(
+            RemoteServerSync.lastSyncDate(root: root, leg: .claude),
+            OpenUsageISO8601.date(from: "2026-08-07T12:56:54Z")
+        )
+        XCTAssertEqual(
+            RemoteServerSync.lastSyncDate(root: root, leg: .opencode),
+            OpenUsageISO8601.date(from: "2026-08-07T09:00:00Z")
+        )
+    }
+
+    func testOneLegSyncedLeavesTheOtherNeverSynced() throws {
+        try writeMarker("2026-08-07T12:56:54Z\n", leg: .claude)
+        XCTAssertNil(RemoteServerSync.lastSyncDate(root: root, leg: .opencode))
     }
 
     func testFreshSyncCarriesNoWarning() {
@@ -53,5 +76,51 @@ final class RemoteServerSyncTests: XCTestCase {
             RemoteServerSync.staleWarning(lastSync: now.addingTimeInterval(-5 * 3600), now: now)
         )
         XCTAssertTrue(warning.contains("5h"), "unexpected warning: \(warning)")
+    }
+
+    // MARK: - Per-tile staleness
+
+    private static let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    /// Regression for the reported bug: the opencode leg had been failing for hours (the 2.5 GB
+    /// database sync timing out) while the Claude leg synced fine every 5 minutes, yet the Claude
+    /// Server tile still showed the amber "sync is stale" triangle.
+    @MainActor
+    func testClaudeTileIgnoresAStaleOpenCodeLeg() async throws {
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-2 * 60)), leg: .claude)
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-5 * 3600)), leg: .opencode)
+        let snapshot = await ClaudeServerProvider(
+            syncRoot: root,
+            now: { Self.now },
+            pricing: { .empty }
+        ).refresh()
+        XCTAssertNil(snapshot.warning)
+    }
+
+    @MainActor
+    func testClaudeTileWarnsOnItsOwnStaleLeg() async throws {
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-5 * 3600)), leg: .claude)
+        let snapshot = await ClaudeServerProvider(
+            syncRoot: root,
+            now: { Self.now },
+            pricing: { .empty }
+        ).refresh()
+        XCTAssertNotNil(snapshot.warning)
+    }
+
+    @MainActor
+    func testOpenCodeTileIgnoresAStaleClaudeLeg() async throws {
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-5 * 3600)), leg: .claude)
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-2 * 60)), leg: .opencode)
+        let snapshot = await OpenCodeServerProvider(
+            syncRoot: root,
+            scanner: OpenCodeServerScanner(databasePath: { "/nonexistent/openusage-tests/opencode.db" }),
+            now: { Self.now }
+        ).refresh()
+        XCTAssertNil(snapshot.warning)
+    }
+
+    private static func iso(_ date: Date) -> String {
+        OpenUsageISO8601.string(from: date) + "\n"
     }
 }

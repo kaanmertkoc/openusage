@@ -33,15 +33,18 @@ final class OpenCodeServerProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // "Credentials" here is the sync marker: the tile is worth enabling once the server sync has
-        // completed at least once.
-        await loadOffMainActor { [syncRoot] in RemoteServerSync.lastSyncDate(root: syncRoot) != nil }
+        // "Credentials" here is the sync marker: the tile is worth enabling once the opencode leg of
+        // the server sync has completed at least once.
+        await loadOffMainActor { [syncRoot] in
+            RemoteServerSync.lastSyncDate(root: syncRoot, leg: .opencode) != nil
+        }
     }
 
     func refresh() async -> ProviderSnapshot {
         let refreshedAt = now()
+        // Only the opencode leg's marker matters here — see the mirror comment in ClaudeServerProvider.
         guard let lastSync = await loadOffMainActor({ [syncRoot] in
-            RemoteServerSync.lastSyncDate(root: syncRoot)
+            RemoteServerSync.lastSyncDate(root: syncRoot, leg: .opencode)
         }) else {
             return ProviderSnapshot.error(provider: provider, error: RemoteServerSyncError.notSynced)
         }

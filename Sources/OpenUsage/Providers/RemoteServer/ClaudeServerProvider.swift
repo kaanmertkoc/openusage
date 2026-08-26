@@ -42,15 +42,19 @@ final class ClaudeServerProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // "Credentials" here is the sync marker: the tile is worth enabling once the server sync has
-        // completed at least once, regardless of whether Claude data has arrived yet.
-        await loadOffMainActor { [syncRoot] in RemoteServerSync.lastSyncDate(root: syncRoot) != nil }
+        // "Credentials" here is the sync marker: the tile is worth enabling once the Claude leg of the
+        // server sync has completed at least once, regardless of whether any logs came with it.
+        await loadOffMainActor { [syncRoot] in
+            RemoteServerSync.lastSyncDate(root: syncRoot, leg: .claude) != nil
+        }
     }
 
     func refresh() async -> ProviderSnapshot {
         let refreshedAt = now()
+        // Only the Claude leg's marker matters here: the opencode leg pulls a different dataset and its
+        // failures must not age out this tile.
         guard let lastSync = await loadOffMainActor({ [syncRoot] in
-            RemoteServerSync.lastSyncDate(root: syncRoot)
+            RemoteServerSync.lastSyncDate(root: syncRoot, leg: .claude)
         }) else {
             return ProviderSnapshot.error(provider: provider, error: RemoteServerSyncError.notSynced)
         }

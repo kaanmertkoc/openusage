@@ -7,7 +7,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/kaankoc/openusage/scripts/remote-sync.sh</string>
+    <string>/Users/kaankoc/openusage-v2/scripts/remote-sync.sh</string>
   </array>
   <key>StartInterval</key>
   <integer>300</integer>

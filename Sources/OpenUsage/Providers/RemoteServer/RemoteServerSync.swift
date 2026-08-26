@@ -8,20 +8,28 @@ enum RemoteServerSync {
     /// Sync considered stale after this long without a successful run (the launchd job runs every 5 min).
     static let staleThreshold: TimeInterval = 15 * 60
 
+    /// The two independently-synced datasets under the host root. Each leg writes its own `.last-sync`
+    /// marker so one failing transfer only ages out the tile it actually feeds — a shared host-level
+    /// marker used to make the Claude tile cry stale whenever the opencode leg failed.
+    enum Leg: String {
+        case claude
+        case opencode
+    }
+
     static func defaultRoot() -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".openusage-remote/\(hostLabel)")
     }
 
-    /// The timestamp `scripts/remote-sync.sh` writes after a fully successful sync of this host.
-    /// `nil` when the marker is missing or unparsable — the sync has never completed.
-    static func lastSyncDate(root: URL) -> Date? {
-        let marker = root.appendingPathComponent(".last-sync")
+    /// The timestamp `scripts/remote-sync.sh` writes after this leg syncs successfully.
+    /// `nil` when the marker is missing or unparsable — that leg has never completed.
+    static func lastSyncDate(root: URL, leg: Leg) -> Date? {
+        let marker = root.appendingPathComponent(leg.rawValue).appendingPathComponent(".last-sync")
         guard let raw = try? String(contentsOf: marker, encoding: .utf8) else { return nil }
         return OpenUsageISO8601.date(from: raw.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    /// Header warning (amber triangle) when the last sync is older than the threshold. The tiles keep
+    /// Header warning (amber triangle) when this leg's last sync is older than the threshold. The tiles keep
     /// showing the last-synced numbers — stale data with a warning beats a blank card.
     static func staleWarning(lastSync: Date, now: Date) -> String? {
         let age = now.timeIntervalSince(lastSync)
