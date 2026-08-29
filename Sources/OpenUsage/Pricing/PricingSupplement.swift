@@ -76,7 +76,10 @@ extension PricingSupplement {
                 outputPerMillion: entry.outputPerMillion,
                 cacheWritePerMillion: entry.cacheWritePerMillion ?? entry.inputPerMillion,
                 cacheReadPerMillion: entry.cacheReadPerMillion ?? entry.inputPerMillion * 0.1,
-                cacheReadIsExplicit: entry.cacheReadPerMillion != nil
+                cacheReadIsExplicit: entry.cacheReadPerMillion != nil,
+                // Carry the declared multiplier onto the entry itself: scanners that flag fast mode
+                // on the request (Claude's `speed` field) price the base slug, never a `-fast` one.
+                fastMultiplier: file.fastMultipliers?[model] ?? 1
             )
         }
         var rules: [AliasRule] = []
