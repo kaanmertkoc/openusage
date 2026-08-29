@@ -54,9 +54,18 @@ final class StatusItemController: NSObject {
         self.statusItem = statusItem
         // Captures the status item, not `self` — no retain cycle, and no optional property just to
         // work around `[weak self]` being unavailable before `super.init()`. The button is resolved
-        // lazily at each apply, so a not-yet-configured button is harmless (same as before the split).
+        // lazily at each apply, and a missing one is reported back rather than swallowed.
         self.imageUpdater = StatusItemImageUpdater(container: container) { image in
-            statusItem.button?.image = image
+            // Report delivery back to the gate: a missing button means the render never reached the
+            // menu bar, so the gate must not record it as shown (it would skip every later render of
+            // the same content and freeze the strip). Loud, because a silently dropped strip is
+            // exactly the failure that leaves the menu bar disagreeing with the dashboard.
+            guard let button = statusItem.button else {
+                AppLog.error(.statusItem, "Menu-bar strip not applied: status item has no button")
+                return false
+            }
+            button.image = image
+            return true
         }
 
         let hosting = NSHostingController(

@@ -12,11 +12,17 @@ enum MenuBarStripRenderer {
     /// Returning the same `NSImage` instance lets `StatusItemImageUpdater` skip the status-item set
     /// (an unconditional set still costs a WindowServer redraw), and keeps `ImageRenderer` (which
     /// retains a little memory per run on macOS) to actual visual changes.
-    private static var lastRender: (content: MenuBarContent, style: MenuBarStyle, image: NSImage?)?
+    private static var lastRender: (content: MenuBarContent, style: MenuBarStyle, image: NSImage)?
 
     /// The strip image for the given content and style, or `nil` when the content renders nothing
     /// in that style (caller falls back to the app icon). Memoized: equal inputs return the
     /// previously rendered instance.
+    ///
+    /// Only a *successful* render is memoized. A `nil` is either a legitimate early-out (nothing pinned,
+    /// or no bounded metric for the Bars glyph — both bail before any rendering work, so recomputing
+    /// them costs nothing) or a transient `ImageRenderer` failure. Caching the latter would pin the
+    /// strip to the fallback app icon for as long as the values stayed put, since the memo is keyed on
+    /// content.
     static func image(for content: MenuBarContent, style: MenuBarStyle) -> NSImage? {
         if let lastRender, lastRender.content == content, lastRender.style == style {
             AppLog.debug(.menubar, "strip cache hit")
@@ -28,7 +34,7 @@ enum MenuBarStripRenderer {
         case .text: image = textImage(for: content)
         case .bars: image = barsImage(for: content)
         }
-        lastRender = (content, style, image)
+        if let image { lastRender = (content, style, image) }
         return image
     }
 
@@ -43,7 +49,10 @@ enum MenuBarStripRenderer {
         guard !content.isEmpty else { return nil }
         let renderer = ImageRenderer(content: MenuBarTextStrip(content: content))
         renderer.scale = 2
-        guard let rendered = renderer.cgImage else { return nil }
+        guard let rendered = renderer.cgImage else {
+            AppLog.error(.menubar, "Text strip render failed; falling back to the app icon")
+            return nil
+        }
         let cgImage = trimmedToVisibleContent(rendered) ?? rendered
         let image = NSImage(
             cgImage: cgImage,
@@ -95,7 +104,10 @@ enum MenuBarStripRenderer {
         guard !fractions.isEmpty else { return nil }
         let renderer = ImageRenderer(content: MenuBarBars(fractions: fractions, side: 18))
         renderer.scale = 2
-        guard let image = renderer.nsImage else { return nil }
+        guard let image = renderer.nsImage else {
+            AppLog.error(.menubar, "Bars strip render failed; falling back to the app icon")
+            return nil
+        }
         image.isTemplate = true
         image.accessibilityDescription = content.accessibilityText
         return image

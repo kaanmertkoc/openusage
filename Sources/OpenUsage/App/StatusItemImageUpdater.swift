@@ -14,22 +14,33 @@ final class StatusItemImageUpdater {
     /// Applies a status-item image only when the instance changed. The renderer memoizes by content,
     /// so an identical instance means the button already shows this render — an unconditional set
     /// still costs a full status-item redraw through WindowServer on macOS 26+.
+    ///
+    /// `lastApplied` means "what the status item is currently showing", so only a *delivered* image may
+    /// be recorded. Skipping that distinction wedges the strip: the apply can fail (the status item has
+    /// no button), and because every image the updater produces is a stable instance — the renderer
+    /// memoizes by content, the icon fallbacks are `static let` — each later render of the same content
+    /// returns that same instance and would be skipped as "already shown". The menu bar would then hold
+    /// a stale value indefinitely while the dashboard, which re-renders off its own countdown, kept
+    /// showing the current one.
     struct ApplyGate {
         private var lastApplied: NSImage?
 
-        mutating func apply(_ image: NSImage, using apply: (NSImage) -> Void) {
+        /// - Parameter apply: delivers the image, returning whether it actually reached the status item.
+        ///   A `false` return leaves the gate untouched, so the next render retries this image.
+        mutating func apply(_ image: NSImage, using apply: (NSImage) -> Bool) {
             guard image !== lastApplied else { return }
+            guard apply(image) else { return }
             lastApplied = image
-            apply(image)
         }
     }
 
     private let container: AppContainer
-    private let apply: (NSImage) -> Void
+    private let apply: (NSImage) -> Bool
     private var applyGate = ApplyGate()
 
-    /// - Parameter apply: sets the rendered image onto the status-item button.
-    init(container: AppContainer, apply: @escaping (NSImage) -> Void) {
+    /// - Parameter apply: sets the rendered image onto the status-item button, returning whether the
+    ///   button existed to receive it.
+    init(container: AppContainer, apply: @escaping (NSImage) -> Bool) {
         self.container = container
         self.apply = apply
     }
