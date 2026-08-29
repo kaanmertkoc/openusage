@@ -11,7 +11,9 @@ set -euo pipefail
 #   - ships no Sparkle feed, so it never checks for or installs updates (test updates with a real
 #     signed + notarized release build — that's the only honest way).
 #
-# Usage: script/build_and_run.sh [run|build|logs|verify]
+# Usage: script/build_and_run.sh [run|install|build|logs|verify]
+#        run      launch the staged build from dist/ (leaves /Applications alone)
+#        install  replace the /Applications copy with this build and launch that
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        CONFIG             "release" (default) or "debug"
 #        ICLOUD_PROVISIONING_PROFILE  optional override for the development provisioning profile;
@@ -185,10 +187,16 @@ fi
 
 # Pick a stable Apple Development identity so ad-hoc cdhash churn doesn't re-trigger
 # permission prompts on every rebuild. Fall back to ad-hoc only if none is found.
+#
+# Selected by SHA-1 hash, not by name: a keychain holding more than one certificate with the same
+# common name (an expired or revoked one alongside its replacement — routine after a cert renewal)
+# makes the name ambiguous, and `codesign --sign <name>` then fails outright rather than picking one.
+# Revoked/invalid entries are skipped too, since `find-identity -v` still lists them (tagged
+# CSSMERR_*) and signing with one fails.
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 if [ -z "$CODESIGN_IDENTITY" ]; then
   CODESIGN_IDENTITY=$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null \
-    | /usr/bin/awk -F\" '/Apple Development:/ { print $2; exit }')
+    | /usr/bin/awk '/Apple Development:/ && !/CSSMERR/ { print $2; exit }')
 fi
 # "-" means ad-hoc: route it through the ad-hoc branch below. Ad-hoc must NOT get
 # "--options runtime" — hardened-runtime library validation rejects teamless (ad-hoc)
@@ -220,10 +228,28 @@ launch_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
 
+# Replace the /Applications copy with this build and launch it from there, so the app you use day to
+# day is the one you just built (same bundle id either way, so pins and settings carry across). The
+# outgoing copy goes to the Trash rather than being deleted outright, so a bad build is one drag back.
+install_app() {
+  local installed="/Applications/$APP_DISPLAY.app"
+  /usr/bin/pkill -x "$TARGET_NAME" >/dev/null 2>&1 || true
+  if [ -d "$installed" ]; then
+    /usr/bin/trash "$installed"
+    echo "==> moved the previous $APP_DISPLAY.app to the Trash"
+  fi
+  /bin/cp -R "$APP_BUNDLE" "$installed"
+  /usr/bin/open -n "$installed"
+  echo "==> installed + launched $APP_DISPLAY (/Applications)"
+}
+
 case "$MODE" in
   run)
     launch_app
     echo "==> launched $APP_DISPLAY (dist/$APP_DISPLAY.app)"
+    ;;
+  install)
+    install_app
     ;;
   build)
     : # build + stage + sign only
@@ -238,7 +264,7 @@ case "$MODE" in
     pgrep -x "$TARGET_NAME" >/dev/null && echo "==> running"
     ;;
   *)
-    echo "usage: $0 [run|build|logs|verify]" >&2
+    echo "usage: $0 [run|install|build|logs|verify]" >&2
     exit 2
     ;;
 esac
