@@ -1,18 +1,19 @@
 import Foundation
 
-/// Shared plumbing for the server1 remote tiles: the rsync destination layout
+/// Shared plumbing for the server1 remote tiles: the synced destination layout
 /// (`~/.openusage-remote/server1/`, populated by `scripts/remote-sync.sh` on a 5-minute launchd
-/// schedule over Tailscale SSH) and the sync-freshness contract both server providers surface.
+/// schedule over Tailscale SSH) and the sync-freshness contract each server provider surfaces.
 enum RemoteServerSync {
     static let hostLabel = "server1"
     /// Sync considered stale after this long without a successful run (the launchd job runs every 5 min).
     static let staleThreshold: TimeInterval = 15 * 60
 
-    /// The two independently-synced datasets under the host root. Each leg writes its own `.last-sync`
+    /// The independently-synced datasets under the host root. Each leg writes its own `.last-sync`
     /// marker so one failing transfer only ages out the tile it actually feeds — a shared host-level
     /// marker used to make the Claude tile cry stale whenever the opencode leg failed.
     enum Leg: String {
         case claude
+        case codex
         case opencode
     }
 

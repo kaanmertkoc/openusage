@@ -36,15 +36,20 @@ final class RemoteServerSyncTests: XCTestCase {
         XCTAssertNil(RemoteServerSync.lastSyncDate(root: root, leg: .claude))
     }
 
-    /// Regression: the two legs of the sync each carry their own marker. They used to share one
+    /// Regression: the sync legs each carry their own marker. They used to share one
     /// host-level `.last-sync`, so a failing opencode rsync (the 2.5 GB database timing out) made the
     /// Claude tile claim staleness even though its own leg had just synced.
     func testLegMarkersAreReadIndependently() throws {
         try writeMarker("2026-08-07T12:56:54Z\n", leg: .claude)
+        try writeMarker("2026-08-07T11:30:00Z\n", leg: .codex)
         try writeMarker("2026-08-07T09:00:00Z\n", leg: .opencode)
         XCTAssertEqual(
             RemoteServerSync.lastSyncDate(root: root, leg: .claude),
             OpenUsageISO8601.date(from: "2026-08-07T12:56:54Z")
+        )
+        XCTAssertEqual(
+            RemoteServerSync.lastSyncDate(root: root, leg: .codex),
+            OpenUsageISO8601.date(from: "2026-08-07T11:30:00Z")
         )
         XCTAssertEqual(
             RemoteServerSync.lastSyncDate(root: root, leg: .opencode),
@@ -54,6 +59,7 @@ final class RemoteServerSyncTests: XCTestCase {
 
     func testOneLegSyncedLeavesTheOtherNeverSynced() throws {
         try writeMarker("2026-08-07T12:56:54Z\n", leg: .claude)
+        XCTAssertNil(RemoteServerSync.lastSyncDate(root: root, leg: .codex))
         XCTAssertNil(RemoteServerSync.lastSyncDate(root: root, leg: .opencode))
     }
 
@@ -116,6 +122,52 @@ final class RemoteServerSyncTests: XCTestCase {
             syncRoot: root,
             scanner: OpenCodeServerScanner(databasePath: { "/nonexistent/openusage-tests/opencode.db" }),
             now: { Self.now }
+        ).refresh()
+        XCTAssertNil(snapshot.warning)
+    }
+
+    @MainActor
+    func testCodexTileReadsOnlyItsSyncedRollouts() async throws {
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-2 * 60)), leg: .codex)
+        let sessions = root.appendingPathComponent("codex/sessions")
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        let timestamp = OpenUsageISO8601.string(from: Self.now.addingTimeInterval(-60))
+        let rollout = [
+            CodexLogFixture.turnContext(timestamp: timestamp, model: "gpt-5.3-codex"),
+            CodexLogFixture.tokenCount(
+                timestamp: timestamp,
+                last: CodexLogFixture.usage(input: 1_000, cached: 200, output: 100)
+            )
+        ].joined(separator: "\n")
+        try rollout.write(
+            to: sessions.appendingPathComponent("server-rollout.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let snapshot = await CodexServerProvider(
+            syncRoot: root,
+            now: { Self.now },
+            pricing: { TestPricing.bundled }
+        ).refresh()
+
+        XCTAssertEqual(snapshot.providerID, "codex-server1")
+        XCTAssertNil(snapshot.warning)
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNotNil(snapshot.line(label: "Last 30 Days"))
+        XCTAssertNotNil(snapshot.line(label: "Usage Trend"))
+        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertNil(snapshot.line(label: "Weekly"))
+    }
+
+    @MainActor
+    func testCodexTileIgnoresAStaleClaudeLeg() async throws {
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-5 * 3600)), leg: .claude)
+        try writeMarker(Self.iso(Self.now.addingTimeInterval(-2 * 60)), leg: .codex)
+        let snapshot = await CodexServerProvider(
+            syncRoot: root,
+            now: { Self.now },
+            pricing: { .empty }
         ).refresh()
         XCTAssertNil(snapshot.warning)
     }

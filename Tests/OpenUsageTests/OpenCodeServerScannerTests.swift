@@ -75,6 +75,7 @@ final class RemoteServerLayoutTests: XCTestCase {
     func testDefaultLayoutSeedsTheServerTiles() {
         for id in [
             "claude-server1.today", "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
+            "codex-server1.today", "codex-server1.yesterday", "codex-server1.last30", "codex-server1.trend",
             "opencode-server1.today", "opencode-server1.yesterday", "opencode-server1.last30", "opencode-server1.trend"
         ] {
             XCTAssertTrue(DefaultLayout.metricIDs.contains(id), "\(id) missing from DefaultLayout.metricIDs")
@@ -82,11 +83,13 @@ final class RemoteServerLayoutTests: XCTestCase {
         // Today stays above the fold; everything else sits below the caret.
         for id in [
             "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
+            "codex-server1.yesterday", "codex-server1.last30", "codex-server1.trend",
             "opencode-server1.yesterday", "opencode-server1.last30", "opencode-server1.trend"
         ] {
             XCTAssertTrue(DefaultLayout.expandedMetricIDs.contains(id), "\(id) missing from expandedMetricIDs")
         }
         XCTAssertFalse(DefaultLayout.expandedMetricIDs.contains("claude-server1.today"))
+        XCTAssertFalse(DefaultLayout.expandedMetricIDs.contains("codex-server1.today"))
         XCTAssertFalse(DefaultLayout.expandedMetricIDs.contains("opencode-server1.today"))
     }
 
@@ -94,9 +97,11 @@ final class RemoteServerLayoutTests: XCTestCase {
     func testCatalogRegistersTheServerProviders() {
         let ids = ProviderCatalog.make().map(\.provider.id)
         XCTAssertTrue(ids.contains("claude-server1"))
+        XCTAssertTrue(ids.contains("codex-server1"))
         XCTAssertTrue(ids.contains("opencode-server1"))
         // Right after their local counterparts.
         XCTAssertEqual(ids.firstIndex(of: "claude-server1"), ids.firstIndex(of: "claude-work").map { $0 + 1 })
+        XCTAssertEqual(ids.firstIndex(of: "codex-server1"), ids.firstIndex(of: "codex").map { $0 + 1 })
         XCTAssertEqual(ids.firstIndex(of: "opencode-server1"), ids.firstIndex(of: "opencode").map { $0 + 1 })
     }
 }

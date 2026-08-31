@@ -20,6 +20,8 @@ enum DefaultLayout {
         "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
+        "codex-server1.today", "codex-server1.yesterday", "codex-server1.last30", "codex-server1.trend",
+
         "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
         "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30",
 
@@ -91,6 +93,7 @@ enum DefaultLayout {
         "claude-work.today", "claude-work.yesterday", "claude-work.last30",
         // Server1 remote tiles: Today stays above the fold; the rest sits below the caret.
         "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
+        "codex-server1.yesterday", "codex-server1.last30", "codex-server1.trend",
         "opencode-server1.yesterday", "opencode-server1.last30", "opencode-server1.trend",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.

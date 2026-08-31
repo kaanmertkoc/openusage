@@ -211,6 +211,7 @@ final class LocalLimitsAPITests: XCTestCase {
             "claude-work": ["session", "weekly", "sonnet", "fable", "extraUsage"],
             // The server1 remote tiles export no limit resources: history-only, no caps.
             "claude-server1": [],
+            "codex-server1": [],
             "opencode-server1": [],
             "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "creditValue", "rateLimitResets"],
             "cursor": ["totalUsage", "autoUsage", "apiUsage", "onDemand", "requests", "credits"],

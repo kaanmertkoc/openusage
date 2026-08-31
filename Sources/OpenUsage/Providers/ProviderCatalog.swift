@@ -14,6 +14,7 @@ enum ProviderCatalog {
             ClaudeProvider.workAccount(),
             ClaudeServerProvider(),
             CodexProvider(),
+            CodexServerProvider(),
             CursorProvider(),
             AntigravityProvider(),
             CopilotProvider(defaults: defaults),

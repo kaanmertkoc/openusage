@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Pulls usage data from remote servers (over Tailscale SSH) into ~/.openusage-remote/<label>/ for the
-# Claude Server / OpenCode Server tiles. Add hosts as "label:ssh-target" entries.
+# Claude Server / Codex Server / OpenCode Server tiles. Add hosts as "label:ssh-target" entries.
 #
-# Two independent legs per host, each with its own `.last-sync` marker so a failure in one never makes
+# Three independent legs per host, each with its own `.last-sync` marker so a failure in one never makes
 # the other tile claim staleness:
 #   claude/   <- rsync of ~/.claude/projects (JSONL logs, ~85 MB)
+#   codex/    <- rsync of ~/.codex/{sessions,archived_sessions} (rollout JSONL only; no credentials)
 #   opencode/ <- a compact extract of the server's opencode.db (see EXTRACT_PY)
 set -u
 
@@ -93,7 +94,7 @@ for entry in "${HOSTS[@]}"; do
   label="${entry%%:*}"
   target="${entry#*:}"
   dest="$DEST_ROOT/$label"
-  mkdir -p "$dest/claude" "$dest/opencode"
+  mkdir -p "$dest/claude" "$dest/codex" "$dest/opencode"
 
   # --- claude leg -----------------------------------------------------------------------------
   # Claude Code may not be in use on the host yet, so probe first. Exit 1 means ssh worked and the
@@ -115,6 +116,28 @@ for entry in "${HOSTS[@]}"; do
     echo "no claude data on $label yet, skipping"
   else
     echo "claude probe failed for $label (rc=$probe)" >&2
+  fi
+
+  # --- codex leg ------------------------------------------------------------------------------
+  # Sync only rollout history. In particular, auth.json and config.toml never leave the server.
+  # Rsync filters both active and archived sessions through one source root so --delete also removes
+  # rollouts that disappeared remotely without touching this leg's local .last-sync marker.
+  with_timeout 60 $SSH_OPTS "$target" 'test -d ~/.codex'
+  probe=$?
+  if [ "$probe" -eq 0 ]; then
+    if with_timeout 300 rsync -az --delete --timeout=30 \
+      --include='/sessions/***' --include='/archived_sessions/***' --exclude='*' \
+      -e "$SSH_OPTS" "$target:~/.codex/" "$dest/codex/"; then
+      stamp "$dest/codex"
+      echo "synced $label/codex"
+    else
+      echo "sync failed for $label/codex" >&2
+    fi
+  elif [ "$probe" -eq 1 ]; then
+    stamp "$dest/codex"
+    echo "no codex data on $label yet, skipping"
+  else
+    echo "codex probe failed for $label (rc=$probe)" >&2
   fi
 
   # --- opencode leg ---------------------------------------------------------------------------
