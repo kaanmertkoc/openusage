@@ -108,21 +108,24 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertFalse(ClaudeLogUsageScanner.isSemverPrefix("1.0."))
     }
 
-    // Ported from ccusage `rejects_null_schema_fields_like_typescript_loader`.
-    func testRejectsNullSchemaFields() {
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"usage":{"speed":null}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"model":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"sessionId":null,"message":{"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        // `content: null` is fine — only the known schema fields reject nulls.
-        XCTAssertFalse(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"content":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
+    func testNullValidationOnlyRejectsConsumedSchemaFields() {
+        let cases: [(String, Bool)] = [
+            (#""speed":null"#, false),
+            (#""cache_read_input_tokens": null"#, false),
+            (#""iterations":[{"type":"message","model":null,"input_tokens":2,"output_tokens":100}]"#, true)
+        ]
+        for (extra, accepted) in cases {
+            let line = #"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":"claude-test-model","content":null,"usage":{"input_tokens":2,"output_tokens":100,\#(extra)}}}"#
+            let entries = ClaudeLogUsageScanner.parseFile(Data(line.utf8))
+            XCTAssertEqual(entries.count, accepted ? 1 : 0, extra)
+            if accepted { XCTAssertEqual(entries.first?.tokens.totalTokens, 102) }
+        }
+        for field in [#""sessionId":null,"#, #""sessionId": null,"#] {
+            let line = #"{\#(field)"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#
+            XCTAssertTrue(ClaudeLogUsageScanner.parseFile(Data(line.utf8)).isEmpty)
+        }
+        let nullModel = #"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#
+        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(nullModel.utf8)))
     }
 
     func testParseFileSkipsNonUsageAndMalformedLines() {

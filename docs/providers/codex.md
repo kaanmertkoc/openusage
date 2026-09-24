@@ -25,6 +25,22 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 
 For supported GPT-5.4, GPT-5.5, and GPT-5.6 models, requests above 272k input tokens use OpenAI's long-context rates for the whole request. Cached input uses the published cache-read discount when the pricing source provides one; otherwise it is estimated at the full input rate. Fast/priority estimates use each model's published Codex multiplier (for example, GPT-5.5 uses 2.5×); model names ending in `-fast` are normalized to their unscaled base rate before that multiplier is applied once.
 
+## OpenCode Usage
+
+OpenCode's ChatGPT OAuth usage joins the local Codex spend tiles. Both OpenCode 1 and OpenCode 2
+message tables are supported, including completed compaction requests. Copies of the same message
+across tables or release channels count once.
+
+Each database's current credential must be ChatGPT OAuth. Paid API-key requests stay excluded.
+OpenCode 2 uses its database credential instead of the old imported auth file; logging out cannot
+revive that stale login. Its usage counts from the current OAuth credential's creation time onward.
+The legacy auth file is used only for databases without a credential table.
+
+Native Codex, OpenCode, and zero-cost pi requests share Codex's request pricing rules, including
+long-context, cache, and fast-tier handling. Costs recorded by pi are retained. Unreadable OpenCode
+databases produce a log warning while the Codex live meters and other local sources keep working.
+The separate server tiles keep their existing data sources.
+
 ## Troubleshooting
 
 - **"Not logged in"** — run `codex` and sign in, then refresh.

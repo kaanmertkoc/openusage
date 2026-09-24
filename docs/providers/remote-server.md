@@ -47,3 +47,8 @@ Notes:
 
 Add a `label:ssh-target` entry to `HOSTS` in `scripts/remote-sync.sh` and clone the providers in
 `Sources/OpenUsage/Providers/RemoteServer/` with the new label's paths and ids.
+
+Claude Server and Codex Server use the same chunked log readers and token validation as their local
+tiles. This reduces raw-file memory use for large synced sessions without changing the sync job,
+account bindings, or the OpenCode Server extract. Records larger than 1 MiB are skipped with a
+warning in the local app log; following records continue to count.

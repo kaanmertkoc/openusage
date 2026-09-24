@@ -62,3 +62,9 @@ Spend tiles and trend: assistant-message `cost` and token fields from every `ope
 directory (OpenCode partitions its database by release channel — stable is `opencode.db`, the preview
 line is `opencode-next.db` — so all channels are unioned). Both `opencode-go` (Go) and `opencode` (Zen)
 count. Read-only.
+
+## ChatGPT Usage in Codex
+
+ChatGPT OAuth requests made through OpenCode appear in the Codex card, separately from OpenCode's
+hosted gateway usage. This supports both OpenCode 1 and 2. It checks each database's current login,
+excludes paid API-key traffic, and deduplicates copied messages. See [Codex](codex.md#opencode-usage).

@@ -50,7 +50,10 @@ actor ClaudeLogUsageScanner {
     /// in-memory and disk caches and the rest reuse it. Tests inject an isolated memory-only scanner.
     private static let sharedScanner = IncrementalJSONLScanner<Entry>(
         logTag: LogTag.plugin("claude"),
-        persistence: JSONLScanCachePersistence(namespace: "claude", schemaVersion: 1)
+        // v3 also bounds malformed token counts before summing buckets.
+        // v2: accept records whose nested `usage.iterations[].model` is null (#1253); cached
+        // parses from v1 silently dropped them, so every file must re-parse once.
+        persistence: JSONLScanCachePersistence(namespace: "claude", schemaVersion: 3)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -243,7 +246,6 @@ actor ClaudeLogUsageScanner {
         var entries: [Entry] = []
         for line in data.split(separator: UInt8(ascii: "\n")) {
             guard line.range(of: marker) != nil else { continue }
-            if hasUnsupportedNullField(line) { continue }
             entries.append(contentsOf: parseEntries(Data(line)))
         }
         return entries
@@ -265,6 +267,7 @@ actor ClaudeLogUsageScanner {
               let timestamp = OpenUsageISO8601.date(from: timestampRaw),
               let message = object["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any],
+              !hasUnsupportedNullField(object, message: message, usage: usage),
               let parsedUsage = tokenBreakdown(from: usage),
               isValidEntry(object, message: message)
         else { return [] }
@@ -310,8 +313,8 @@ actor ClaudeLogUsageScanner {
     private static func tokenBreakdown(
         from usage: [String: Any]
     ) -> (tokens: TokenBreakdown, hasSpeed: Bool)? {
-        guard let input = usage["input_tokens"] as? NSNumber,
-              let output = usage["output_tokens"] as? NSNumber
+        guard let input = ProviderParse.number(usage["input_tokens"]),
+              let output = ProviderParse.number(usage["output_tokens"])
         else { return nil }
 
         // Claude tags fast-mode requests with `speed`; any value outside the known set marks a log
@@ -324,18 +327,18 @@ actor ClaudeLogUsageScanner {
         var cacheWrite5m = 0
         var cacheWrite1h = 0
         if let cacheCreation = usage["cache_creation"] as? [String: Any] {
-            cacheWrite5m = (cacheCreation["ephemeral_5m_input_tokens"] as? NSNumber)?.intValue ?? 0
-            cacheWrite1h = (cacheCreation["ephemeral_1h_input_tokens"] as? NSNumber)?.intValue ?? 0
+            cacheWrite5m = UsageTokenCount.read(cacheCreation["ephemeral_5m_input_tokens"], provider: "claude")
+            cacheWrite1h = UsageTokenCount.read(cacheCreation["ephemeral_1h_input_tokens"], provider: "claude")
         } else {
-            cacheWrite5m = (usage["cache_creation_input_tokens"] as? NSNumber)?.intValue ?? 0
+            cacheWrite5m = UsageTokenCount.read(usage["cache_creation_input_tokens"], provider: "claude")
         }
 
         return (TokenBreakdown(
-            input: input.intValue,
+            input: UsageTokenCount.read(input, provider: "claude"),
             cacheWrite5m: cacheWrite5m,
             cacheWrite1h: cacheWrite1h,
-            cacheRead: (usage["cache_read_input_tokens"] as? NSNumber)?.intValue ?? 0,
-            output: output.intValue,
+            cacheRead: UsageTokenCount.read(usage["cache_read_input_tokens"], provider: "claude"),
+            output: UsageTokenCount.read(output, provider: "claude"),
             isFast: speed == "fast"
         ), speed != nil)
     }
@@ -366,36 +369,24 @@ actor ClaudeLogUsageScanner {
         return index < bytes.count && bytes[index].isASCIIDigit
     }
 
-    /// Claude never writes `null` into these fields; a line that does is a foreign/corrupt shape that
-    /// ccusage skips before JSON parsing, and we match it byte-for-byte.
-    static func hasUnsupportedNullField(_ line: Data.SubSequence) -> Bool {
-        let nullMarker = Data(":null".utf8)
-        let quote = UInt8(ascii: "\"")
-        let bytes = Data(line) // fresh copy → indices are 0-based
-        var offset = bytes.startIndex
-        while let markerRange = bytes.range(of: nullMarker, in: offset..<bytes.endIndex) {
-            let start = markerRange.lowerBound
-            var fieldEnd = start > 0 ? start - 1 : 0
-            if bytes[fieldEnd] != quote {
-                while fieldEnd > 0, bytes[fieldEnd] != quote { fieldEnd -= 1 }
-            }
-            if bytes[fieldEnd] == quote, fieldEnd > 0 {
-                var fieldStart = fieldEnd - 1
-                while fieldStart > 0, bytes[fieldStart] != quote { fieldStart -= 1 }
-                if bytes[fieldStart] == quote {
-                    let field = String(decoding: bytes[(fieldStart + 1)..<fieldEnd], as: UTF8.self)
-                    if Self.unsupportedNullableFields.contains(field) { return true }
-                }
-            }
-            offset = markerRange.upperBound
+    /// Claude never writes `null` into the schema fields we consume; a line that does is a
+    /// foreign/corrupt shape that ccusage skips. The check is scoped to the exact objects we read
+    /// (top level, `message`, `message.usage`) so unrelated nested keys sharing a name — such as
+    /// `usage.iterations[].model`, which Claude Code 2.1.270 writes as `null` for ordinary message
+    /// iterations — don't invalidate an otherwise valid record.
+    static func hasUnsupportedNullField(
+        _ object: [String: Any], message: [String: Any], usage: [String: Any]
+    ) -> Bool {
+        let levels: [([String: Any], [String])] = [
+            (object, ["cwd", "costUSD", "version", "sessionId", "requestId", "isApiErrorMessage"]),
+            (message, ["id", "model"]),
+            (usage, ["speed", "cache_read_input_tokens", "cache_creation_input_tokens"])
+        ]
+        for (container, fields) in levels {
+            for field in fields where container[field] is NSNull { return true }
         }
         return false
     }
-
-    private static let unsupportedNullableFields: Set<String> = [
-        "id", "cwd", "model", "speed", "costUSD", "version", "sessionId", "requestId",
-        "isApiErrorMessage", "cache_read_input_tokens", "cache_creation_input_tokens"
-    ]
 
     // MARK: - Deduplication
 

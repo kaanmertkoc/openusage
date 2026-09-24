@@ -34,3 +34,7 @@ The pricing refresh fetches three public price lists (from `raw.githubuserconten
 
 - **Supplement changes** (new Cursor-native model, price correction, new alias): edit `Sources/OpenUsage/Resources/pricing_supplement.json`, sync entries from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md), and update `updated_at`. On merge to `main`, `.github/workflows/pricing-supplement.yml` publishes it to gh-pages; installed apps pick it up within about an hour. The bundled copy ships with the next release for first launches. The **pricing-update skill** (`.agents/skills/pricing-update/`) walks an agent through the whole sync: pull the Cursor page, diff, edit, validate, and open a PR.
 - **Bundled snapshots** (`pricing_litellm_snapshot.json`, `pricing_models_dev_snapshot.json`): regenerate occasionally (e.g. before a release) with `script/update_pricing_snapshots.sh`. Staleness is harmless — runtime fetches override them.
+
+Codex's local, OpenCode ChatGPT OAuth, and zero-cost pi requests use the same request-level
+pricing rules. OpenCode message rows retain request boundaries, so long-context rates apply when
+appropriate. This does not change the token-only OpenCode Server tile.

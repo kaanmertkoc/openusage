@@ -675,6 +675,11 @@ final class CodexProviderTests: XCTestCase {
             ),
             usageClient: CodexUsageClient(http: httpClient),
             logUsageScanner: CodexLogFixture.scanner(home: home),
+            openCodeUsageScanner: OpenCodeOpenAIUsageScanner(databasePaths: { [] }),
+            piUsageScanner: PiUsageScanner(
+                environment: FakeEnvironment([:]), homeDirectory: { home },
+                incrementalScanner: IncrementalJSONLScanner<PiUsageScanner.Entry>()
+            ),
             now: { now },
             pricing: {
                 // 150 tokens -> $0.25 at these fixture rates: (100 x 1000 + 50 x 3000) / 1M.

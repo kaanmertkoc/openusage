@@ -15,6 +15,7 @@ final class CodexProvider: ProviderRuntime {
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
     let logUsageScanner: CodexLogUsageScanner
+    let piUsageScanner: PiUsageScanner
     let openCodeUsageScanner: OpenCodeOpenAIUsageScanner
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
@@ -24,6 +25,7 @@ final class CodexProvider: ProviderRuntime {
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         openCodeUsageScanner: OpenCodeOpenAIUsageScanner = OpenCodeOpenAIUsageScanner(),
+        piUsageScanner: PiUsageScanner = .shared,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
@@ -31,6 +33,7 @@ final class CodexProvider: ProviderRuntime {
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
         self.openCodeUsageScanner = openCodeUsageScanner
+        self.piUsageScanner = piUsageScanner
         self.now = now
         self.pricing = pricing
     }
@@ -145,7 +148,12 @@ final class CodexProvider: ProviderRuntime {
         // All scans run on their scanner actors, off the main actor.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
-        let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        let piScan = await piUsageScanner.scan(
+            cardID: provider.id, now: now(), pricing: pricing,
+            estimateCost: { model, tokens in
+                CodexUsagePricing.estimatedCost(pricing: pricing, model: model, tokens: tokens)
+            }
+        )
         let openCodeScan = await openCodeUsageScanner.scan(now: now(), pricing: pricing)
         var usageHistory: ProviderUsageHistory?
         // Cancellation can land between the native, pi, and opencode scans. Treat them as one unit so

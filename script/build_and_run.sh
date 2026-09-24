@@ -62,7 +62,9 @@ if [ ! -x "$BUILD_CLI_BINARY" ]; then
 fi
 
 echo "==> staging $APP_BUNDLE"
-rm -rf "$APP_BUNDLE"
+if [ -d "$APP_BUNDLE" ]; then
+  /usr/bin/trash "$APP_BUNDLE"
+fi
 mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 cp "$BUILD_CLI_BINARY" "$CLI_BINARY"

@@ -79,7 +79,13 @@ struct GrokLogUsageScanner: Sendable {
             else { return }
 
             let ctx = object["ctx"] as? [String: Any] ?? [:]
-            let pid = ProviderParse.number(object["pid"]).map { Int($0) }
+            let pid = ProviderParse.number(object["pid"]).flatMap { number -> Int? in
+                guard (0...Double(Int32.max)).contains(number) else {
+                    AppLog.warn(LogTag.plugin("grok"), "Ignored an invalid process ID in a local usage record")
+                    return nil
+                }
+                return Int(number)
+            }
 
             if let model = modelID(msg: msg, ctx: ctx) {
                 if let pid { modelByPID[pid] = model }
@@ -92,16 +98,16 @@ struct GrokLogUsageScanner: Sendable {
                   timestamp >= since
             else { return }
 
-            let completion = Int(ProviderParse.number(ctx["completion_tokens"]) ?? 0)
-            let reasoning = Int(ProviderParse.number(ctx["reasoning_tokens"]) ?? 0)
+            let completion = UsageTokenCount.read(ctx["completion_tokens"], provider: "grok")
+            let reasoning = UsageTokenCount.read(ctx["reasoning_tokens"], provider: "grok")
             // `cached_prompt_tokens` is a subset of `prompt_tokens`, so total counts prompt once.
-            let cached = min(ProviderParse.number(ctx["cached_prompt_tokens"]) ?? 0, promptTokens)
-            let cacheRead = Int(cached)
-            let inputNoCache = Int(max(0, promptTokens - cached))
+            let prompt = UsageTokenCount.read(promptTokens, provider: "grok")
+            let cacheRead = min(UsageTokenCount.read(ctx["cached_prompt_tokens"], provider: "grok"), prompt)
+            let inputNoCache = prompt - cacheRead
             let output = completion + reasoning
 
             let day = DailyUsageAccumulator.dayKey(from: timestamp)
-            let totalTokens = Int(promptTokens) + output
+            let totalTokens = prompt + output
 
             // Grok's token rows lack a model id; attribute via the row's process. Rows that can't be
             // priced (no attributable model, or a model no source can price) are excluded from every

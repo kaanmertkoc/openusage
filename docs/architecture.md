@@ -103,3 +103,14 @@ only — a universal dev build just doubles compile time on the maintainer's own
 
 A small loopback server exposes the current usage as JSON on `127.0.0.1:6736` for other local tools. See
 [Local HTTP API](local-http-api.md) for the endpoints and the privacy tradeoff.
+
+Local Claude, Codex, and pi logs are read in small chunks instead of loading whole files into
+memory. Codex keeps each file's model, fast-tier, and subagent replay state across chunks. Individual
+records over 1 MiB are skipped with a log warning that spending may be incomplete; later records
+still count. Cancellation stops reading without replacing the last good result with a partial scan.
+
+Malformed token counts are bounded before conversion and summation in the Claude, Codex, pi,
+OpenCode-to-Codex, and Grok readers. Negative or invalid values become zero; implausibly large
+values are capped, with a diagnostic in the log. Existing Claude, Codex, and pi parse caches are
+invalidated once so old malformed values are not reused. Parsed usage entries remain cached;
+the streaming limit bounds raw file buffering, not the entire history cache.

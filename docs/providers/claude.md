@@ -56,3 +56,13 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 `GET https://api.anthropic.com/api/oauth/usage` with the selected OAuth token. Claude Code tokens refresh via `platform.claude.com/v1/oauth/token`; Claude Desktop tokens are read-only and must be renewed by Desktop itself. If a token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.
 
 When the five-hour session window has no usage yet, the Session row shows **Not started** on the trailing label; hover explains that the session begins after your first message.
+
+### Personal Build Counting
+
+Personal and Work usage stay separated by their configured folders. Nested workflow and subagent
+logs under each folder count in that tile, including new usage appended while a workflow runs;
+replayed messages count once. Cowork stays excluded from Work.
+
+Ordinary nested iterations may have a null model without invalidating the parent usage record.
+After this fix, the saved Claude parse cache is refreshed automatically to recover previously
+skipped records.
