@@ -3,6 +3,7 @@ import Foundation
 
 @MainActor
 final class ClaudeProvider: ProviderRuntime {
+    var resetAuthorization: ResetAuthorization?
     let provider: Provider
 
     let authStore: ClaudeAuthStore
@@ -57,6 +58,8 @@ final class ClaudeProvider: ProviderRuntime {
                 .exportingLimit("fable", unit: "percent"),
             .boundedDollars(id: "\(provider.id).extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
                 .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
+            .values(id: "\(provider.id).rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets", traySuffix: "resets", showsResetExpiries: true)
+                .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available")),
             .usageTrend(provider: provider)
                 .exportingHistory(
                     scope: .machineLocal,
@@ -89,6 +92,7 @@ final class ClaudeProvider: ProviderRuntime {
         forceDesktopFallback: Bool,
         previousFallbackError: ClaudeAuthError?
     ) async -> ProviderSnapshot {
+        resetAuthorization = nil
         let allowDesktopInteraction = ProviderRefreshContext.isManual
         let credentialLoad = await loadOffMainActor { [authStore] in
             authStore.loadCredentialSet(
@@ -360,6 +364,10 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
+        resetAuthorization = ResetAuthorization(
+            credentials: ClaudeResetCredentials(accessToken: working.oauth.accessToken ?? "", config: try authStore.oauthConfig()),
+            generation: expectedGeneration, desktop: working.source == .desktop
+        )
         lastGoodUsage = mapped
         rateLimitedUntil = nil
         return mapped
@@ -407,7 +415,7 @@ final class ClaudeProvider: ProviderRuntime {
         expectedGeneration: ClaudeCredentialGeneration
     ) async throws -> RefreshedAccess {
         AppLog.info(LogTag.auth(provider.id), "token refresh attempt")
-        let response = try await usageClient.refreshToken(refreshToken, config: authStore.oauthConfig())
+        let response = try await usageClient.refreshToken(refreshToken, config: try authStore.oauthConfig())
         if response.statusCode == 400 || response.statusCode == 401 {
             let body = (try? JSONSerialization.jsonObject(with: response.body)) as? [String: Any]
             let errorCode = body?["error"] as? String ?? body?["error_description"] as? String

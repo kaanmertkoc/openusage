@@ -29,6 +29,7 @@ struct WidgetRowView: View {
     /// Backs the resets popover's claim flow; `nil` outside the live dashboard (previews, share
     /// renders), which renders the timeline read-only.
     @Environment(\.codexResetClaim) private var codexResetClaim
+    @Environment(\.claudeResetClaim) private var claudeResetClaim
     /// Party easter egg: fill meter bars with the party gradient instead of the severity color. Off by
     /// default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
@@ -284,7 +285,7 @@ struct WidgetRowView: View {
     }
 
     /// Whether the value column reveals a hover popover: the model breakdown on spend rows, or the
-    /// resets timeline on the Codex rate-limit-resets row. One `modelHover` coordinator drives both — a
+    /// resets timeline on a rate-limit-resets row. One `modelHover` coordinator drives both — a
     /// row is only ever one kind — so lighting the value and anchoring the popover share the spend
     /// row's machinery. The resets row qualifies even at "0 available" (empty `expiriesAt`), so its
     /// empty-state popover stays reachable — but only with real data: a "No data" tile must not open a
@@ -368,14 +369,19 @@ struct WidgetRowView: View {
                     ModelUsageDetail(title: data.title, breakdown: breakdown) { inside in
                         modelHover.detailHover(inside)
                     }
+                } else if data.showsResetExpiries, let claudeResetClaim {
+                    ClaudeResetDetail(
+                        service: claudeResetClaim,
+                        onHoverChange: { modelHover.detailHover($0) },
+                        onPinChange: { modelHover.setPinned($0) }
+                    )
                 } else if data.showsResetExpiries {
                     RateLimitResetsDetail(
                         count: data.resetCreditCount, expiries: data.expiriesAt,
                         onHoverChange: { inside in modelHover.detailHover(inside) },
                         onPinChange: { pinned in modelHover.setPinned(pinned) },
-                        // Rows with reset expiries are Codex-only today, so the Codex claim service is
-                        // the right backing; absent from the environment (previews, share renders) the
-                        // timeline is read-only.
+                        // The grouped list scopes this service to Codex rows. Previews and share
+                        // renders have no service and remain read-only.
                         claim: codexResetClaim.map { service in
                             { expiry, redeemRequestID in
                                 await service.claim(creditExpiringAt: expiry, redeemRequestID: redeemRequestID)

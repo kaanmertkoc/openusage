@@ -10,10 +10,10 @@ enum DefaultLayout {
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
 
         "claude.session", "claude.weekly", "claude.trend",
-        "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
+        "claude.extra", "claude.rateLimitResets", "claude.today", "claude.yesterday", "claude.last30",
 
         "claude-work.session", "claude-work.weekly", "claude-work.trend",
-        "claude-work.extra", "claude-work.today", "claude-work.yesterday", "claude-work.last30",
+        "claude-work.extra", "claude-work.rateLimitResets", "claude-work.today", "claude-work.yesterday", "claude-work.last30",
 
         "claude-server1.today", "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
 
@@ -88,8 +88,8 @@ enum DefaultLayout {
         "antigravity.claude", "antigravity.claudeWeekly",
         // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay above the fold; spend-history
         // rows sit below the caret. Matches every other provider's "core above, history below" shape.
-        "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",
-        "claude-work.sonnet", "claude-work.fable",
+        "claude.rateLimitResets", "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",
+        "claude-work.rateLimitResets", "claude-work.sonnet", "claude-work.fable",
         "claude-work.today", "claude-work.yesterday", "claude-work.last30",
         // Server1 remote tiles: Today stays above the fold; the rest sits below the caret.
         "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",

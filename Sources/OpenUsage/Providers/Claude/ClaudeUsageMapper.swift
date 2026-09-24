@@ -29,6 +29,18 @@ enum ClaudeUsageMapper {
         appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
         appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
         appendExtraUsage(body["extra_usage"], to: &lines)
+        do {
+            if let resets = try ClaudeResetStatus.fromUsage(response) {
+                let grants = resets.eligible ? resets.availableGrants(now: now) : []
+                lines.append(.values(
+                    label: "Rate Limit Resets",
+                    values: [MetricValue(number: Double(grants.reduce(0) { $0 + $1.resetsLeft }), kind: .count, label: "available")],
+                    expiriesAt: grants.compactMap(\.endsAt).sorted()
+                ))
+            }
+        } catch {
+            AppLog.error(LogTag.plugin("claude"), "Reset status is malformed; keeping quota data and disabling reset display")
+        }
 
         return ClaudeMappedUsage(
             plan: formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),

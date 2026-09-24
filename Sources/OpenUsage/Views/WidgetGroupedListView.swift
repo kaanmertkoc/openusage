@@ -242,6 +242,8 @@ struct WidgetGroupedListView: View {
             onToggleMeterStyle: { dataStore.meterStyle.toggle() },
             condensedTop: condensedTop
         )
+            .environment(\.codexResetClaim, providerID == "codex" ? container.codexResetClaim : nil)
+            .environment(\.claudeResetClaim, container.claudeResetClaims[providerID])
             .contentShape(Rectangle())
             .opacity(activeMetricID == descriptor.id ? 0 : 1)
             .highPriorityGesture(metricDragGesture(for: descriptor, providerID: providerID))

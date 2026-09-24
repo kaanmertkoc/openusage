@@ -207,8 +207,8 @@ final class LocalLimitsAPITests: XCTestCase {
             Set(descriptors.flatMap(\.limitResources).map(\.key))
         }
         let expected: [String: Set<String>] = [
-            "claude": ["session", "weekly", "sonnet", "fable", "extraUsage"],
-            "claude-work": ["session", "weekly", "sonnet", "fable", "extraUsage"],
+            "claude": ["session", "weekly", "sonnet", "fable", "extraUsage", "rateLimitResets"],
+            "claude-work": ["session", "weekly", "sonnet", "fable", "extraUsage", "rateLimitResets"],
             // The server1 remote tiles export no limit resources: history-only, no caps.
             "claude-server1": [],
             "codex-server1": [],

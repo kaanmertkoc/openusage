@@ -12,7 +12,7 @@ enum ResetClaimOutcome: Equatable, Sendable {
     case failed
 }
 
-/// Claims a Codex rate-limit reset credit — the app's only provider-API write, so it is deliberately
+/// Claims a Codex rate-limit reset credit — an explicit provider-API write, so it is deliberately
 /// narrow: one credit per call, always by explicit credit id, guarded by the caller's idempotency key.
 /// The protocol was reverse-engineered from the open-source Codex CLI and verified live once; see
 /// docs/research/codex-reset-credit-claim.md.

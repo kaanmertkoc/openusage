@@ -61,13 +61,13 @@ struct ClaudeUsageClient: Sendable {
         try await httpClient.send(
             HTTPRequest(
                 method: "GET",
-                url: config.usageURL,
+                url: Self.usageURLWithResetGrants(config.usageURL),
                 headers: [
                     "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                     "anthropic-beta": "oauth-2025-04-20",
-                    "User-Agent": "claude-code/2.1.69"
+                    "User-Agent": Self.resetUserAgent
                 ],
                 timeout: 10
             )

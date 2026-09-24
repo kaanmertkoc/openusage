@@ -66,3 +66,24 @@ replayed messages count once. Cowork stays excluded from Work.
 Ordinary nested iterations may have a null model without invalidating the parent usage record.
 After this fix, the saved Claude parse cache is refreshed automatically to recover previously
 skipped records.
+
+## Banked Rate Limit Resets
+
+Claude and Claude Work each have a **Rate Limit Resets** row under the expandable section,
+after Extra Usage. It is enabled by default and not pinned to the menu bar. The count comes
+from Anthropic; grants may hold several uses and may expire. No data means availability could
+not be established, rather than zero resets.
+
+Open the row's details to check the grants for that account. **Use → Confirm Reset** is required
+to spend one. The confirmation identifies the account and affected limits. Opening, hovering,
+refreshing, and restarting the app never spend a reset. Anthropic may require a limit to be reached
+or an earlier grant to be used first. The normal weekly reset day stays the same.
+
+Before sending, the app rechecks the login and grant. A changed account or grant stops the action.
+If the result is uncertain, the saved request blocks a new use; **Retry Same Request** requires
+confirmation and reuses its original ID, even after an app restart. Only account/grant/request IDs
+and confirmation details are saved, never credentials. A retry never switches accounts.
+
+The usage read includes `cedar_ember=1` and Claude Code's user agent, as upstream does.
+The explicit redemption protocol follows the installed Claude Code client; see
+[the implementation notes](../research/claude-reset-claim.md).

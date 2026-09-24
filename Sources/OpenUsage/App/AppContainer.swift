@@ -32,11 +32,12 @@ final class AppContainer {
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
-    /// Claims Codex rate-limit reset credits from the resets popover (the app's only provider-API
+    /// Claims Codex rate-limit reset credits from the resets popover (an explicit provider-API
     /// write). Shares the Codex provider's auth store and usage client; `nil` only if the Codex
     /// provider were ever removed from the registry. Injected into the view tree via
     /// `\.codexResetClaim`.
     let codexResetClaim: CodexResetClaimService?
+    let claudeResetClaims: [String: ClaudeResetClaimService]
     /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
     /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
     private let providers: [ProviderRuntime]
@@ -114,6 +115,24 @@ final class AppContainer {
         // forced refresh returns `.skipped` when another refresh already owns the provider — and that
         // in-flight probe may carry *pre-claim* usage — so retry until this refresh actually runs
         // (bounded; the racing probe finishes in seconds).
+        self.claudeResetClaims = Dictionary(uniqueKeysWithValues: providers.compactMap { $0 as? ClaudeProvider }.map { claude in
+            (claude.provider.id, ClaudeResetClaimService(
+                providerID: claude.provider.id, displayName: claude.provider.displayName,
+                client: claude.usageClient,
+                credentials: { [weak claude] in await claude?.credentialsForReset() },
+                refreshAfterClaim: { [weak dataStore] in
+                    // Wait out a read already in flight so pre-reset meters cannot win the race.
+                    for _ in 0..<45 {
+                        guard let dataStore else { return }
+                        let result = await dataStore.refresh(providerID: claude.provider.id, force: true)
+                        if result != .skipped { return }
+                        try? await Task.sleep(for: .seconds(1))
+                    }
+                    AppLog.error(LogTag.plugin(claude.provider.id), "Post-reset refresh stayed busy; refresh the account again")
+                }
+            ))
+        })
+
         self.codexResetClaim = providers.compactMap { $0 as? CodexProvider }.first.map { codex in
             CodexResetClaimService(
                 authStore: codex.authStore,
