@@ -1,7 +1,7 @@
 import Foundation
 
-/// Shared plumbing for the server1 remote tiles: the synced destination layout
-/// (`~/.openusage-remote/server1/`, populated by `scripts/remote-sync.sh` on a 5-minute launchd
+/// Shared plumbing for remote tiles: the synced destination layout
+/// (`~/.openusage-remote/<server>/`, populated by `scripts/remote-sync.sh` on a 5-minute launchd
 /// schedule over Tailscale SSH) and the sync-freshness contract each server provider surfaces.
 enum RemoteServerSync {
     static let hostLabel = "server1"
@@ -17,9 +17,24 @@ enum RemoteServerSync {
         case opencode
     }
 
-    static func defaultRoot() -> URL {
+    static func defaultRoot(hostLabel: String = hostLabel) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".openusage-remote/\(hostLabel)")
+    }
+
+    /// A paused tailnet or failed transfer never makes the last successful snapshot look fresh.
+    /// Empty status files mean the problem cleared; the sync job replaces each status atomically.
+    static func syncIssue(root: URL, leg: Leg) -> String? {
+        for file in [
+            root.deletingLastPathComponent().appendingPathComponent(".sync-paused"),
+            root.appendingPathComponent(leg.rawValue).appendingPathComponent(".sync-error")
+        ] {
+            if let text = try? String(contentsOf: file, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                return text
+            }
+        }
+        return nil
     }
 
     /// The timestamp `scripts/remote-sync.sh` writes after this leg syncs successfully.

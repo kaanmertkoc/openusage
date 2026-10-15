@@ -9,6 +9,8 @@ struct PopoverFooter: View {
     let horizontalPadding: CGFloat
     let onHeightChange: (PopoverScreen, CGFloat) -> Void
 
+    @AppStorage(DashboardPresentationSetting.key) private var presentation = DashboardPresentationSetting.list
+
     @ViewBuilder
     var body: some View {
         Group {
@@ -18,6 +20,19 @@ struct PopoverFooter: View {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity
                     Spacer(minLength: 8)
+                    if screen == .dashboard {
+                        Picker("Dashboard View", selection: $presentation) {
+                            ForEach(DashboardPresentationSetting.allCases, id: \.self) { option in
+                                Image(systemName: option.symbol)
+                                    .accessibilityLabel(option.title)
+                                    .tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .frame(width: 64)
+                    }
                     HeaderView(screen: screen)
                 }
             }

@@ -6,12 +6,8 @@ import Foundation
 /// answers "what did the server spend".
 @MainActor
 final class ClaudeServerProvider: ProviderRuntime {
-    let provider = Provider(
-        id: "claude-server1",
-        displayName: "Claude Server",
-        icon: .providerMark("claude"),
-        links: [.init(label: "Status", url: "https://status.anthropic.com/")]
-    )
+    let provider: Provider
+    let server: RemoteClaudeServer
 
     let syncRoot: URL
     let logUsageScanner: ClaudeLogUsageScanner
@@ -19,11 +15,20 @@ final class ClaudeServerProvider: ProviderRuntime {
     let pricing: @Sendable () async -> ModelPricing
 
     init(
-        syncRoot: URL = RemoteServerSync.defaultRoot(),
+        server: RemoteClaudeServer = RemoteClaudeServer.configured.first { $0.id == "server1" }!,
+        syncRoot: URL? = nil,
         logUsageScanner: ClaudeLogUsageScanner? = nil,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
+        self.server = server
+        self.provider = Provider(
+            id: server.providerID,
+            displayName: "Claude · \(server.name)",
+            icon: .providerMark("claude"),
+            links: [.init(label: "Status", url: "https://status.anthropic.com/")]
+        )
+        let syncRoot = syncRoot ?? server.syncRoot
         self.syncRoot = syncRoot
         // Pin the scan to the synced config dir. Cowork sandboxes belong to the local desktop app,
         // not the server — including them would double-book local usage into this tile.
@@ -42,25 +47,36 @@ final class ClaudeServerProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // "Credentials" here is the sync marker: the tile is worth enabling once the Claude leg of the
-        // server sync has completed at least once, regardless of whether any logs came with it.
-        await loadOffMainActor { [syncRoot] in
+        // Explicitly listed machines awaiting setup must be visible before their first sync.
+        if server.setupRequired != nil { return true }
+        // A configured server that has been attempted deserves a card even on failure, so a missing
+        // folder or SSH problem is visible instead of silently hiding that machine.
+        return await loadOffMainActor { [syncRoot] in
             RemoteServerSync.lastSyncDate(root: syncRoot, leg: .claude) != nil
+                || FileManager.default.fileExists(atPath: syncRoot.appendingPathComponent("claude/.sync-error").path)
         }
     }
 
     func refresh() async -> ProviderSnapshot {
+        if let message = server.setupRequired {
+            AppLog.error(LogTag.plugin(provider.id), message)
+            return ProviderSnapshot.error(provider: provider, message: message)
+        }
         let refreshedAt = now()
         // Only the Claude leg's marker matters here: the opencode leg pulls a different dataset and its
         // failures must not age out this tile.
-        guard let lastSync = await loadOffMainActor({ [syncRoot] in
-            RemoteServerSync.lastSyncDate(root: syncRoot, leg: .claude)
-        }) else {
-            return ProviderSnapshot.error(provider: provider, error: RemoteServerSyncError.notSynced)
+        let (lastSync, issue) = await loadOffMainActor { [syncRoot] in
+            (RemoteServerSync.lastSyncDate(root: syncRoot, leg: .claude),
+             RemoteServerSync.syncIssue(root: syncRoot, leg: .claude))
+        }
+        guard let lastSync else {
+            let message = issue ?? "No synced Claude logs from \(server.name) yet. Run scripts/remote-sync.sh first."
+            AppLog.error(LogTag.plugin(provider.id), message)
+            return ProviderSnapshot.error(provider: provider, message: message)
         }
 
         var lines: [MetricLine] = []
-        let note = "From the \(RemoteServerSync.hostLabel) server's synced Claude logs (estimated)"
+        let note = "From \(server.name)'s synced Claude logs (estimated)"
         if let scan = await logUsageScanner.scan(now: refreshedAt, pricing: await pricing()) {
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &lines, now: refreshedAt,
@@ -76,7 +92,7 @@ final class ClaudeServerProvider: ProviderRuntime {
             plan: nil,
             lines: lines,
             refreshedAt: refreshedAt,
-            warning: RemoteServerSync.staleWarning(lastSync: lastSync, now: refreshedAt)
+            warning: issue ?? RemoteServerSync.staleWarning(lastSync: lastSync, now: refreshedAt)
         )
     }
 }

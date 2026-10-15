@@ -15,8 +15,6 @@ enum DefaultLayout {
         "claude-work.session", "claude-work.weekly", "claude-work.trend",
         "claude-work.extra", "claude-work.rateLimitResets", "claude-work.today", "claude-work.yesterday", "claude-work.last30",
 
-        "claude-server1.today", "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
-
         "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
@@ -42,7 +40,9 @@ enum DefaultLayout {
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
         "zai.session", "zai.weekly", "zai.webSearches"
-    ]
+    ] + RemoteClaudeServer.configured.flatMap { server in
+        ["today", "yesterday", "last30", "trend"].map { "\(server.providerID).\($0)" }
+    }
 
     /// Frozen snapshot of the default-on metrics from the release that introduced default seeding.
     /// Existing users without a seeded-defaults key are treated as if these were already offered, so
@@ -92,7 +92,6 @@ enum DefaultLayout {
         "claude-work.rateLimitResets", "claude-work.sonnet", "claude-work.fable",
         "claude-work.today", "claude-work.yesterday", "claude-work.last30",
         // Server1 remote tiles: Today stays above the fold; the rest sits below the caret.
-        "claude-server1.yesterday", "claude-server1.last30", "claude-server1.trend",
         "codex-server1.yesterday", "codex-server1.last30", "codex-server1.trend",
         "opencode-server1.yesterday", "opencode-server1.last30", "opencode-server1.trend",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
@@ -116,5 +115,7 @@ enum DefaultLayout {
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
         // Z.ai: Session meter stays above the fold; Web Searches (monthly count) sits below the caret.
         "zai.webSearches"
-    ]
+    ] + RemoteClaudeServer.configured.flatMap { server in
+        ["yesterday", "last30", "trend"].map { "\(server.providerID).\($0)" }
+    }
 }

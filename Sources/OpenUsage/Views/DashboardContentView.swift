@@ -15,6 +15,7 @@ struct DashboardContentView: View {
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
+    @AppStorage(DashboardPresentationSetting.key) private var presentation = DashboardPresentationSetting.list
 
     var body: some View {
         PopoverScrollView {
@@ -43,6 +44,9 @@ struct DashboardContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($scrollPosition)
+        .onChange(of: presentation) { _, _ in
+            scrollPosition.scrollTo(edge: .top)
+        }
     }
 
     @ViewBuilder
@@ -50,7 +54,7 @@ struct DashboardContentView: View {
         // The cross-provider Total Spend ring stays visible whenever the user allows it and an enabled
         // provider can track spend, even before fresh data arrives or when every metric row is hidden.
         if showTotalSpend, layout.hasSpendCapableProvider {
-            TotalSpendCard()
+            TotalSpendCard(compact: presentation == .list)
                 .padding(.bottom, density.sectionSpacing)
         }
         if layout.displayGroups.isEmpty {
@@ -61,6 +65,8 @@ struct DashboardContentView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
                 .padding(.horizontal, 16)
+        } else if presentation == .list {
+            CompactDashboardListView()
         } else {
             WidgetGroupedListView(
                 reorderSpaceName: reorderSpaceName,

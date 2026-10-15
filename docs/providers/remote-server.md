@@ -1,54 +1,95 @@
-# Remote Server Usage (personal fork)
+# Remote Server Usage (Personal Fork)
 
-Three tiles showing what the remote server (`server1`, reached over Tailscale) spends in Claude Code,
-Codex, and OpenCode. Nothing to install on the server: a launchd job on this Mac pulls the server's usage every
-5 minutes, and the tiles read the synced copies. Nothing is sent anywhere.
+Each configured server gets its own Claude card with tokens, estimated cost, model breakdown,
+and daily trend. The Mac pulls saved Claude Code session logs over Tailscale SSH every five
+minutes. It uses the same native scanner as the local Claude card. No agent needs installing
+on the servers.
 
-## How the data gets here
+## Servers
 
-`scripts/remote-sync.sh` (launchd job `com.kaanmertkoc.openusage.remote-sync`, plist in `scripts/`)
-pulls over Tailscale SSH into `~/.openusage-remote/server1/`, in three independent legs:
+The app and sync job share `Sources/OpenUsage/Resources/remote_servers.json`:
 
-- **claude** — rsync of `~/.claude/projects/` → `claude/projects/`, Claude Code's session logs.
-- **codex** — filtered rsync of `~/.codex/` → `codex/`. Only `sessions/` and
-  `archived_sessions/` rollout logs are copied; credentials and configuration stay on the server.
-- **opencode** — the server's `opencode.db` holds every message body and runs to several GB, far too
-  much to pull every 5 minutes. Instead the job runs a small `python3` snippet on the server that
-  boils the last 31 days down to one timestamp-and-token-total row per assistant message, and pulls
-  that ~1 MB extract to `opencode/opencode.db`. It keeps the same table shape the tile queries, so
-  nothing downstream knows the difference.
+| Card | SSH User | Claude Projects Folder |
+|---|---|---|
+| Claude · Ubuntu NBG1 | root | `/root/.claude/projects` |
+| Claude · Cosmo Shop | root | `/home/kahya/.claude/projects` |
+| Claude · Pleasure Server 1 | kahya | `/home/kahya/.claude/projects` |
+| Claude · Mac Mini | Setup required | Not yet verified |
 
-Each leg stamps its own `.last-sync` (`claude/.last-sync`, `codex/.last-sync`, or
-`opencode/.last-sync`) when it succeeds,
-and each tile only reads its own. A tile shows an amber header warning when its stamp is older than
-15 minutes (server unreachable, Tailscale SSH re-auth needed, job unloaded) — a failure in one leg
-never makes the other tile look stale. Sync log: `~/.openusage-remote/sync.log`.
+Ubuntu keeps the existing `server1` identity, saved layout, and history. Its Codex and OpenCode
+cards continue to sync independently. Cosmo currently has no Claude logs in its configured
+folder; its card reports the missing logs and starts counting once sessions appear there.
+Mac Mini is explicitly listed with **SSH Setup Required** until its SSH login and Claude log
+folder are verified. It appears immediately, makes no remote requests, and shows no invented counts.
 
-## What the tiles track
+## When Tailscale Is Off
 
-| Metric | Meaning |
-|---|---|
-| Today / Yesterday / Last 30 Days | The server's daily usage — Claude and Codex: estimated cost + tokens (native log scans, same engines as their local tiles); OpenCode: tokens only |
-| Usage Trend | A day-by-day sparkline of the server's tokens over the last month |
+Before any SSH or rsync call, the job asks the local Tailscale client for its connection state.
+If Tailscale is disconnected, logged out, or unavailable, it pauses all remote requests.
+Cards retain the last successful counts and show the pause reason. Sync resumes automatically
+on the next scheduled check after Tailscale reconnects (within five minutes).
 
-Notes:
+An individual offline server is skipped too. Other servers keep syncing. A failed transfer
+never updates that server's last-success timestamp. Missing or unreadable log folders show a
+clear error, rather than fresh zero usage. After a successful retry, the warning clears.
 
-- **Claude Server** is history-only. Session/weekly limits are account-wide and already live on the
-  main Claude tile — server usage counts into those same meters.
-- **Codex Server** is also history-only. It shows tokens and estimated spend from the server's
-  rollouts; account-wide Session/Weekly limits stay on the main Codex tile.
-- **OpenCode Server** shows no dollars: the server runs subscription providers (e.g. `openai`) whose
-  rows cost $0, so dollar figures would be a misleading `$0.00`. All assistant rows count, with no
-  providerID filter.
-- Each tile auto-enables once its own leg has synced at least once (that `.last-sync` marker is the
-  "credential").
+## How Data Gets Here
 
-## Adding another server
+`scripts/remote-sync.sh` starts the standard-library Python worker in `scripts/remote_sync.py`.
+The existing launchd job is `com.kaanmertkoc.openusage.remote-sync` (plist in `scripts/`).
+Up to three servers sync concurrently, with a process lock preventing overlapping runs.
+SSH and rsync have deadlines, including connections waiting for Tailscale re-authentication.
 
-Add a `label:ssh-target` entry to `HOSTS` in `scripts/remote-sync.sh` and clone the providers in
-`Sources/OpenUsage/Providers/RemoteServer/` with the new label's paths and ids.
+Copies are stored under `~/.openusage-remote/<id>/`:
 
-Claude Server and Codex Server use the same chunked log readers and token validation as their local
-tiles. This reduces raw-file memory use for large synced sessions without changing the sync job,
-account bindings, or the OpenCode Server extract. Records larger than 1 MiB are skipped with a
-warning in the local app log; following records continue to count.
+- **claude** — only session `*.jsonl` files beneath the configured projects folder.
+- **codex** — only `~/.codex/sessions/` and `archived_sessions/`, for server1.
+- **opencode** — a compact extract of the last 31 days from server1's database. The existing
+  Python extract is in `scripts/remote_opencode_extract.py`; message bodies stay remote.
+
+Claude session files contain conversations as well as usage. These copies stay on this Mac;
+credentials and configuration files are excluded. Previously copied Claude/Codex history is
+retained when remote cleanup removes sessions. The scanners count only their normal history
+window and deduplicate replayed records within each server.
+
+Each dataset has its own `.last-sync` and `.sync-error`. The shared `.sync-paused` records a
+Tailscale pause. Successful syncs clear errors; a success older than 15 minutes shows a stale
+warning. The job's output is in `~/.openusage-remote/sync.log`.
+
+## What Counts
+
+Today, Yesterday, Last 30 Days, and Usage Trend describe the named server only. Claude token
+counts are measured from persisted session logs; costs are estimates at API rates. Session and
+weekly subscription limits are account-wide and stay on the main Claude cards. OpenCode's
+existing server card shows tokens only.
+
+Nested workflow and subagent logs count. Runs with session persistence disabled cannot count.
+Only the configured user's log folder is read; extra users or container log locations need
+explicit configuration. Copied histories on different servers cannot establish where the
+original request ran, so these cards attribute logs to their configured source machine.
+
+New Claude cards use the existing server defaults: all four metrics enabled, Today always
+visible, the trend and other periods on demand, and no menu-bar pins. Saved customizations
+remain intact. A server card is detected after its first sync attempt, including failed attempts,
+so connection problems remain visible. Explicit setup-required entries appear before any sync attempt.
+
+## Adding Or Updating A Server
+
+1. Find its Tailscale IP or MagicDNS name with `tailscale status` and verify SSH access once.
+   The unattended job uses existing trusted SSH host keys and never accepts changed keys.
+2. Add an entry to `Sources/OpenUsage/Resources/remote_servers.json` with a unique stable `id`,
+   friendly `name`, `sshTarget` (`user@host`), and absolute `claudeProjectsPath`.
+3. Run `scripts/remote-sync.sh`, then rebuild and restart with `script/build_and_run.sh`.
+   The app loads its bundled server list at launch; source configuration changes require a build.
+
+Keep `server1`'s ID. Names and connection details can change without losing saved customization.
+New servers reuse the same Claude provider and defaults; there is no provider class to clone.
+For a known machine awaiting access, use a `setupRequired` message instead of `sshTarget` and
+`claudeProjectsPath`. To connect Mac Mini, replace that message with its verified connection fields,
+sync, and rebuild. Keep its `mac-mini` ID so its layout survives setup.
+
+## Verification
+
+Run `python3 -m unittest discover -s scripts -p test_remote_sync.py` for the offline/resume,
+per-server failure, and transfer-filter checks. Swift's `RemoteClaudeServerTests` cover separate
+counts, stale/paused displays, and preservation of saved layout preferences.

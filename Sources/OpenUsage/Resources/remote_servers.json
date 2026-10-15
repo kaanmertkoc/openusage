@@ -1,0 +1,27 @@
+[
+  {
+    "id": "server1",
+    "name": "Ubuntu NBG1",
+    "sshTarget": "root@100.121.7.20",
+    "claudeProjectsPath": "/root/.claude/projects",
+    "syncCodex": true,
+    "syncOpenCode": true
+  },
+  {
+    "id": "cosmo-shop",
+    "name": "Cosmo Shop",
+    "sshTarget": "root@100.113.106.93",
+    "claudeProjectsPath": "/home/kahya/.claude/projects"
+  },
+  {
+    "id": "pleasure-server-1",
+    "name": "Pleasure Server 1",
+    "sshTarget": "kahya@100.66.221.20",
+    "claudeProjectsPath": "/home/kahya/.claude/projects"
+  },
+  {
+    "id": "mac-mini",
+    "name": "Mac Mini",
+    "setupRequired": "SSH Setup Required — Configure SSH access to Mac mini (100.122.235.7) and verify its Claude logs folder to start syncing."
+  }
+]

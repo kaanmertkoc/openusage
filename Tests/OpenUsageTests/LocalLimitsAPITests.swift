@@ -206,11 +206,10 @@ final class LocalLimitsAPITests: XCTestCase {
         let actual = registry.limitDescriptorsByProvider.mapValues { descriptors in
             Set(descriptors.flatMap(\.limitResources).map(\.key))
         }
-        let expected: [String: Set<String>] = [
+        var expected: [String: Set<String>] = [
             "claude": ["session", "weekly", "sonnet", "fable", "extraUsage", "rateLimitResets"],
             "claude-work": ["session", "weekly", "sonnet", "fable", "extraUsage", "rateLimitResets"],
-            // The server1 remote tiles export no limit resources: history-only, no caps.
-            "claude-server1": [],
+            // Remote tiles export no limit resources: history-only, no caps.
             "codex-server1": [],
             "opencode-server1": [],
             "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "creditValue", "rateLimitResets"],
@@ -224,6 +223,9 @@ final class LocalLimitsAPITests: XCTestCase {
             "zai": ["session", "weekly", "webSearches"]
         ]
 
+        for server in RemoteClaudeServer.configured {
+            expected[server.providerID] = []
+        }
         XCTAssertEqual(actual, expected)
     }
 }

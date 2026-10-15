@@ -2,6 +2,18 @@
 
 The popover that opens from the menu bar icon. Providers are sections; each section shows the metrics you've enabled.
 
+## List and Cards
+
+The personal build starts in **List** mode. Use the list/grid switch in the footer to choose **List** or **Cards**; the choice survives restarts.
+
+List mode gives each provider or server one expandable row. Its summary shows up to two non-chart **Always Visible** metrics, in your saved order, including the period labels. Click a row for its enabled metrics, sync errors, quick links, and Refresh/Customize controls. Missing readings stay **No data**. List expansion is temporary and does not change which cards you had open.
+
+When a provider has no readings and needs setup or has a sync error, its summary shows that reason. Expand the row to read the full message.
+
+The total at the top also starts collapsed in List mode. Click its value to open the breakdown and period picker. The metric menu still switches between cost and tokens.
+
+Both views use the same enabled providers, metric settings, and order. Use Customize to reorder while in List mode; direct dragging remains available in Cards mode.
+
 ## First launch
 
 A fresh install doesn't turn on every provider OpenUsage knows about. It starts with Claude, Codex, and Cursor, then quickly checks which providers have credentials available on your Mac (existing local logins, saved API keys, or supported environment variables — nothing is sent anywhere) and switches to exactly that set. If nothing is found, the Claude/Codex/Cursor starter set stays. A one-time card at the top of the dashboard explains this and points to **Customize**, where you can turn any provider on or off; the card stays until you close it with its ✕ button.
@@ -51,7 +63,7 @@ Rows with a reset date tick every 30 seconds, so countdowns and pace stay live b
 
 ## Right-click menus
 
-Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.)
+Every metric row in Cards mode: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.) In List mode, right-click the provider row for Refresh, Customize, Share Screenshot, and Hide.
 Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on in Customize. Customize opens straight to that provider's metrics.) plus **Share Screenshot** (see below).
 
 ## Share

@@ -51,10 +51,12 @@ final class CodexServerProvider: ProviderRuntime {
 
     func refresh() async -> ProviderSnapshot {
         let refreshedAt = now()
-        guard let lastSync = await loadOffMainActor({ [syncRoot] in
-            RemoteServerSync.lastSyncDate(root: syncRoot, leg: .codex)
-        }) else {
-            return ProviderSnapshot.error(provider: provider, error: RemoteServerSyncError.notSynced)
+        let (lastSync, issue) = await loadOffMainActor { [syncRoot] in
+            (RemoteServerSync.lastSyncDate(root: syncRoot, leg: .codex),
+             RemoteServerSync.syncIssue(root: syncRoot, leg: .codex))
+        }
+        guard let lastSync else {
+            return ProviderSnapshot.error(provider: provider, message: issue ?? RemoteServerSyncError.notSynced.localizedDescription)
         }
 
         var lines: [MetricLine] = []
@@ -74,7 +76,7 @@ final class CodexServerProvider: ProviderRuntime {
             plan: nil,
             lines: lines,
             refreshedAt: refreshedAt,
-            warning: RemoteServerSync.staleWarning(lastSync: lastSync, now: refreshedAt)
+            warning: issue ?? RemoteServerSync.staleWarning(lastSync: lastSync, now: refreshedAt)
         )
     }
 }

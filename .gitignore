@@ -25,6 +25,7 @@ node_modules/
 *.xcarchive
 *.xcresult
 .build-test/
+__pycache__/
 
 # Local appcast / Sparkle feed output
 feed/

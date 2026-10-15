@@ -9,10 +9,13 @@ import SwiftUI
 /// (`LayoutStore.hasSpendCapableProvider`) and the toggle at the top of Settings is on; a period
 /// (or metric) with nothing to show uses a quiet empty state instead of hiding the card.
 struct TotalSpendCard: View {
+    var compact = false
+
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(\.colorScheme) private var colorScheme
     @Namespace private var pickerNamespace
+    @State private var isExpanded = false
 
     /// The selected period survives popover closes and relaunches, like the meter-style toggles.
     @AppStorage("openusage.totalSpend.period") private var periodRawValue = TotalSpendPeriod.today.rawValue
@@ -45,9 +48,59 @@ struct TotalSpendCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            header
-            card
+            if compact {
+                compactHeader
+            } else {
+                header
+            }
+            if !compact || isExpanded {
+                card
+            }
         }
+    }
+
+    private var compactHeader: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                metricMenu
+                Text(period.rawValue)
+                    .font(.system(size: density.supportingPointSize))
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                withAnimation(Motion.spring) { isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                    Text(compactValue)
+                        .font(.system(size: density.headerPointSize, weight: .semibold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Total \(metric.title), \(period.rawValue), \(compactValue)")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Show or Hide the Breakdown and Period Picker")
+        }
+        .padding(.vertical, 6)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var compactValue: String {
+        guard !projection.isEmpty else { return WidgetData.noDataSubtitle }
+        let value: String
+        switch metric {
+        case .cost: value = MetricFormatter.number(projection.centerValue, kind: .dollars, style: .row)
+        case .tokens: value = MetricFormatter.number(projection.centerValue, kind: .count, style: .row)
+        case .costPerMtok: value = MetricFormatter.costPerMtok(projection.centerValue, style: .row)
+        }
+        return projection.isEstimated ? "~\(value)" : value
     }
 
     // MARK: - Header

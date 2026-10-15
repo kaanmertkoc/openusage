@@ -43,10 +43,12 @@ final class OpenCodeServerProvider: ProviderRuntime {
     func refresh() async -> ProviderSnapshot {
         let refreshedAt = now()
         // Only the opencode leg's marker matters here — see the mirror comment in ClaudeServerProvider.
-        guard let lastSync = await loadOffMainActor({ [syncRoot] in
-            RemoteServerSync.lastSyncDate(root: syncRoot, leg: .opencode)
-        }) else {
-            return ProviderSnapshot.error(provider: provider, error: RemoteServerSyncError.notSynced)
+        let (lastSync, issue) = await loadOffMainActor { [syncRoot] in
+            (RemoteServerSync.lastSyncDate(root: syncRoot, leg: .opencode),
+             RemoteServerSync.syncIssue(root: syncRoot, leg: .opencode))
+        }
+        guard let lastSync else {
+            return ProviderSnapshot.error(provider: provider, message: issue ?? RemoteServerSyncError.notSynced.localizedDescription)
         }
 
         let series: DailyUsageSeries?
@@ -68,7 +70,7 @@ final class OpenCodeServerProvider: ProviderRuntime {
             plan: nil,
             lines: lines,
             refreshedAt: refreshedAt,
-            warning: RemoteServerSync.staleWarning(lastSync: lastSync, now: refreshedAt)
+            warning: issue ?? RemoteServerSync.staleWarning(lastSync: lastSync, now: refreshedAt)
         )
     }
 }

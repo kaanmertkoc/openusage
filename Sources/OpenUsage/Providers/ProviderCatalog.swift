@@ -7,12 +7,13 @@ enum ProviderCatalog {
     static func make(defaults: UserDefaults = .standard) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
         // then every other provider alphabetically by display name.
-        [
+        let claudeServers: [ProviderRuntime] = RemoteClaudeServer.configured.map { ClaudeServerProvider(server: $0) }
+        return [
             // Personal fork: both Claude accounts as pinned instances (see ClaudeAccounts.swift),
-            // plus the server1 remote tiles right after their local counterparts (RemoteServer/).
+            // plus configured Claude servers and the existing server1 Codex/OpenCode tiles.
             ClaudeProvider.personalAccount(),
-            ClaudeProvider.workAccount(),
-            ClaudeServerProvider(),
+            ClaudeProvider.workAccount()
+        ] + claudeServers + [
             CodexProvider(),
             CodexServerProvider(),
             CursorProvider(),
