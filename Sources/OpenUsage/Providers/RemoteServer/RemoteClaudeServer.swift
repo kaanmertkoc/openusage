@@ -7,14 +7,16 @@ struct RemoteClaudeServer: Decodable, Sendable {
     let name: String
     let sshTarget: String?
     let claudeProjectsPath: String?
+    let sshIdentityFile: String?
     let setupRequired: String?
 
     init(id: String, name: String, sshTarget: String? = nil, claudeProjectsPath: String? = nil,
-         setupRequired: String? = nil) {
+         setupRequired: String? = nil, sshIdentityFile: String? = nil) {
         self.id = id
         self.name = name
         self.sshTarget = sshTarget
         self.claudeProjectsPath = claudeProjectsPath
+        self.sshIdentityFile = sshIdentityFile
         self.setupRequired = setupRequired
     }
 
@@ -44,13 +46,18 @@ struct RemoteClaudeServer: Decodable, Sendable {
             else { throw ConfigurationError.invalid("Invalid or duplicate remote server: \(server.id)") }
             if let message = server.setupRequired {
                 guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      server.sshTarget == nil, server.claudeProjectsPath == nil
+                      server.sshTarget == nil, server.claudeProjectsPath == nil, server.sshIdentityFile == nil
                 else { throw ConfigurationError.invalid("Invalid pending server setup: \(server.id)") }
             } else {
                 guard let target = server.sshTarget, let path = server.claudeProjectsPath,
                       target.range(of: #"^[a-zA-Z0-9_-]+@[a-zA-Z0-9][a-zA-Z0-9.-]*$"#, options: .regularExpression) != nil,
                       path.hasPrefix("/"), !path.contains("\n"), !path.contains("\0")
                 else { throw ConfigurationError.invalid("Invalid remote server connection: \(server.id)") }
+            }
+            if let identity = server.sshIdentityFile {
+                guard (identity.hasPrefix("/") || identity.hasPrefix("~/")),
+                      !identity.contains("\n"), !identity.contains("\0")
+                else { throw ConfigurationError.invalid("Invalid SSH identity path: \(server.id)") }
             }
         }
         guard servers.contains(where: { $0.id == "server1" }) else {

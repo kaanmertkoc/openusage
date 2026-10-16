@@ -1,4 +1,5 @@
 import json
+import shlex
 from pathlib import Path
 import tempfile
 import unittest
@@ -128,6 +129,17 @@ class RemoteSyncTests(unittest.TestCase):
         self.assertIn("root@100.1.1.1:~/.codex/", transfer)
         self.assertIn("--exclude=*", transfer)
 
+    def test_probe_and_transfer_use_keychain_without_interactive_prompts(self):
+        sync.sync_claude(self.server, self.root / "claude")
+        probe = self.run.call_args_list[0].args[0]
+        transfer = self.run.call_args_list[1].args[0]
+        transport = shlex.split(transfer[transfer.index("-e") + 1])
+        for command in [probe, transport]:
+            self.assertEqual(command[0], "/usr/bin/ssh")
+            self.assertIn("UseKeychain=yes", command)
+            self.assertIn("BatchMode=yes", command)
+            self.assertIn("StrictHostKeyChecking=yes", command)
+
     def test_opencode_extract_keeps_expected_database_name(self):
         destination = self.root / "opencode"
         destination.mkdir()
@@ -139,6 +151,32 @@ class RemoteSyncTests(unittest.TestCase):
         self.run.side_effect = run
         sync.sync_opencode(self.server, destination)
         self.assertEqual((destination / "opencode.db").read_bytes(), b"new extract")
+
+    def test_dedicated_key_is_used_for_probe_and_transfer_only_on_its_server(self):
+        key = self.root / "key with spaces"
+        key.write_text("fixture")
+        self.server["sshIdentityFile"] = str(key)
+        sync.sync_claude(self.server, self.root / "claude")
+        probe = self.run.call_args_list[0].args[0]
+        transfer = self.run.call_args_list[1].args[0]
+        transport = shlex.split(transfer[transfer.index("-e") + 1])
+        for command in [probe, transport]:
+            self.assertEqual(command[command.index("-i") + 1], str(key))
+            self.assertIn("IdentitiesOnly=yes", command)
+        self.assertNotIn("-i", sync.ssh_command(self.second))
+
+    def test_missing_dedicated_key_does_not_fall_back_to_other_credentials(self):
+        self.server["sshIdentityFile"] = str(self.root / "missing-key")
+        with self.assertRaisesRegex(sync.SyncError, "SSH key not found"):
+            sync.sync_claude(self.server, self.root / "claude")
+        self.run.assert_not_called()
+
+    def test_invalid_key_path_rejected_before_network(self):
+        for identity in ["relative-key", "", "/tmp/key\nnext", 123]:
+            self.config.write_text(json.dumps([{**self.server, "sshIdentityFile": identity}]))
+            with self.assertRaises(sync.SyncError):
+                sync.synchronize(self.config, self.root)
+        self.run.assert_not_called()
 
 
 if __name__ == "__main__":

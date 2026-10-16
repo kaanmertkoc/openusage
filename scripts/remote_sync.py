@@ -18,7 +18,10 @@ import sys
 
 
 CONFIG = Path(__file__).resolve().parents[1] / "Sources/OpenUsage/Resources/remote_servers.json"
-SSH = ["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"]
+# The launchd worker runs on macOS. Apple's SSH can unlock an encrypted key using its
+# saved Keychain passphrase even when the agent has no identities after a restart.
+SSH = ["/usr/bin/ssh", "-o", "UseKeychain=yes", "-o", "ConnectTimeout=10",
+       "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"]
 
 
 class SyncError(RuntimeError):
@@ -60,18 +63,23 @@ def load_servers(path):
         identifier = server.get("id", "")
         target = server.get("sshTarget", "")
         source = server.get("claudeProjectsPath", "")
+        identity = server.get("sshIdentityFile")
         setup = server.get("setupRequired")
         if (not re.fullmatch(r"[a-z0-9][a-z0-9-]*", identifier) or identifier in ids
                 or not server.get("name", "").strip()):
             raise SyncError(f"Invalid or duplicate server configuration: {identifier}")
         if setup is not None:
             if (not isinstance(setup, str) or not setup.strip()
-                    or server.get("sshTarget") is not None or server.get("claudeProjectsPath") is not None):
+                    or server.get("sshTarget") is not None or server.get("claudeProjectsPath") is not None
+                    or identity is not None):
                 raise SyncError(f"Invalid pending server setup: {identifier}")
         elif (not isinstance(target, str) or not isinstance(source, str)
               or not re.fullmatch(r"[a-zA-Z0-9_-]+@[a-zA-Z0-9][a-zA-Z0-9.-]*", target)
               or not source.startswith("/") or "\n" in source or "\0" in source):
             raise SyncError(f"Invalid remote server connection: {identifier}")
+        if identity is not None and (not isinstance(identity, str) or not identity.startswith(("/", "~/"))
+                                     or "\n" in identity or "\0" in identity):
+            raise SyncError(f"Invalid SSH identity path: {identifier}")
         for flag in ("syncCodex", "syncOpenCode"):
             if flag in server and not isinstance(server[flag], bool):
                 raise SyncError(f"{identifier}: {flag} must be a boolean")
@@ -115,16 +123,26 @@ def peer_online(server, status):
     raise SyncError(f"{server['name']} is not visible in this Tailscale connection")
 
 
+def ssh_command(server):
+    command = list(SSH)
+    if identity := server.get("sshIdentityFile"):
+        path = Path(identity).expanduser()
+        if not path.is_file():
+            raise SyncError(f"SSH key not found for {server['name']} at {path}")
+        command += ["-i", str(path), "-o", "IdentitiesOnly=yes"]
+    return command
+
+
 def rsync(server, source, destination, filters=()):
     destination.mkdir(parents=True, exist_ok=True)
     remote_path = "~/" + shlex.quote(source[2:]) if source.startswith("~/") else shlex.quote(source)
-    run_command(["rsync", "-az", "--timeout=30", *filters, "-e", shlex.join(SSH),
+    run_command(["rsync", "-az", "--timeout=30", *filters, "-e", shlex.join(ssh_command(server)),
                  f"{server['sshTarget']}:{remote_path}", str(destination) + "/"], timeout=300)
 
 
 def sync_claude(server, destination):
     source = server["claudeProjectsPath"].rstrip("/")
-    present = run_command([*SSH, server["sshTarget"],
+    present = run_command([*ssh_command(server), server["sshTarget"],
                            f"if test -d {shlex.quote(source)}; then printf found; else printf missing; fi"], timeout=30)
     if present.strip() != "found":
         raise MissingLogsError(f"No Claude logs found on {server['name']} at {source}. Waiting for session logs.")
@@ -135,7 +153,7 @@ def sync_claude(server, destination):
 
 
 def sync_codex(server, destination):
-    run_command([*SSH, server["sshTarget"], "test -d ~/.codex"], timeout=30)
+    run_command([*ssh_command(server), server["sshTarget"], "test -d ~/.codex"], timeout=30)
     rsync(server, "~/.codex/", destination,
           ["--include=/sessions/***", "--include=/archived_sessions/***", "--exclude=*"])
 
@@ -144,7 +162,7 @@ def sync_opencode(server, destination):
     extract = Path(__file__).with_name("remote_opencode_extract.py").read_bytes()
     encoded = base64.b64encode(extract).decode("ascii")
     command = f"printf %s {encoded} | base64 -d | python3 -"
-    run_command([*SSH, server["sshTarget"], command], timeout=120)
+    run_command([*ssh_command(server), server["sshTarget"], command], timeout=120)
     rsync(server, "/tmp/openusage-opencode-extract.db", destination)
     (destination / "openusage-opencode-extract.db").replace(destination / "opencode.db")
 

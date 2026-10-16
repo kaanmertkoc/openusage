@@ -155,6 +155,20 @@ final class RemoteClaudeServerTests: XCTestCase {
         XCTAssertThrowsError(try RemoteClaudeServer.decode(JSONSerialization.data(withJSONObject: entries)))
     }
 
+    func testOptionalSSHIdentityRequiresAnAbsoluteOrHomeRelativePath() throws {
+        var entry: [String: Any] = ["id": "server1", "name": "Server", "sshTarget": "root@100.1.1.1",
+                                    "claudeProjectsPath": "/root/.claude/projects"]
+        for path in ["~/.ssh/openusage_mac_mini_ed25519", "/Users/test/key with spaces"] {
+            entry["sshIdentityFile"] = path
+            let result = try RemoteClaudeServer.decode(JSONSerialization.data(withJSONObject: [entry]))
+            XCTAssertEqual(result.first?.sshIdentityFile, path)
+        }
+        for path in ["relative-key", "", "/tmp/key\nnext"] {
+            entry["sshIdentityFile"] = path
+            XCTAssertThrowsError(try RemoteClaudeServer.decode(JSONSerialization.data(withJSONObject: [entry])))
+        }
+    }
+
     private func server(_ id: String, name: String) -> RemoteClaudeServer {
         RemoteClaudeServer(id: id, name: name, sshTarget: "root@100.1.1.1", claudeProjectsPath: "/root/.claude/projects")
     }

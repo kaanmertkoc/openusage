@@ -22,6 +22,8 @@
   {
     "id": "mac-mini",
     "name": "Mac Mini",
-    "setupRequired": "SSH Setup Required — Configure SSH access to Mac mini (100.122.235.7) and verify its Claude logs folder to start syncing."
+    "sshTarget": "kaankoc@100.122.235.7",
+    "claudeProjectsPath": "/Users/kaankoc/.claude/projects",
+    "sshIdentityFile": "~/.ssh/openusage_mac_mini_ed25519"
   }
 ]

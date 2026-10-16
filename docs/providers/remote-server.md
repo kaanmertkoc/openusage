@@ -14,13 +14,14 @@ The app and sync job share `Sources/OpenUsage/Resources/remote_servers.json`:
 | Claude · Ubuntu NBG1 | root | `/root/.claude/projects` |
 | Claude · Cosmo Shop | root | `/home/kahya/.claude/projects` |
 | Claude · Pleasure Server 1 | kahya | `/home/kahya/.claude/projects` |
-| Claude · Mac Mini | Setup required | Not yet verified |
+| Claude · Mac Mini | kaankoc | `/Users/kaankoc/.claude/projects` |
 
 Ubuntu keeps the existing `server1` identity, saved layout, and history. Its Codex and OpenCode
 cards continue to sync independently. Cosmo currently has no Claude logs in its configured
 folder; its card reports the missing logs and starts counting once sessions appear there.
-Mac Mini is explicitly listed with **SSH Setup Required** until its SSH login and Claude log
-folder are verified. It appears immediately, makes no remote requests, and shows no invented counts.
+Mac Mini syncs over its Tailscale address using the dedicated local key
+`~/.ssh/openusage_mac_mini_ed25519`. Its login and Claude logs folder have been verified.
+Interactive SSH can still ask for the account password; background syncing uses this key.
 
 ## When Tailscale Is Off
 
@@ -39,6 +40,16 @@ clear error, rather than fresh zero usage. After a successful retry, the warning
 The existing launchd job is `com.kaanmertkoc.openusage.remote-sync` (plist in `scripts/`).
 Up to three servers sync concurrently, with a process lock preventing overlapping runs.
 SSH and rsync have deadlines, including connections waiting for Tailscale re-authentication.
+Both use Apple's `/usr/bin/ssh` with Keychain support, so a saved SSH key passphrase can be
+used by the background job even when the SSH agent starts empty. Password prompts stay off.
+
+If the server accepts your public key but login still fails because the private key is locked,
+run `/usr/bin/ssh-add --apple-use-keychain ~/.ssh/id_ed25519` in Terminal on the Mac running
+OpenUsage. Enter that key's passphrase there once. Use your actual key path if it differs.
+
+A server can instead select a dedicated automation key with `sshIdentityFile`, using an absolute
+path or `~/.ssh/...`. Probes and transfers use that same key. A missing configured key fails visibly
+instead of trying other credentials. Private keys stay in `~/.ssh`, outside the repository.
 
 Copies are stored under `~/.openusage-remote/<id>/`:
 
@@ -85,8 +96,8 @@ so connection problems remain visible. Explicit setup-required entries appear be
 Keep `server1`'s ID. Names and connection details can change without losing saved customization.
 New servers reuse the same Claude provider and defaults; there is no provider class to clone.
 For a known machine awaiting access, use a `setupRequired` message instead of `sshTarget` and
-`claudeProjectsPath`. To connect Mac Mini, replace that message with its verified connection fields,
-sync, and rebuild. Keep its `mac-mini` ID so its layout survives setup.
+`claudeProjectsPath`. Once access is verified, replace that message with the connection fields,
+sync, and rebuild. Keep the same ID so its layout survives setup.
 
 ## Verification
 
